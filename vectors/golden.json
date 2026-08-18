@@ -1,0 +1,85 @@
+{
+  "protocol": "device-link/v3",
+  "cases": [
+    {
+      "id": "get-info-request",
+      "kind": "request",
+      "opcode": 1,
+      "sequence": 1,
+      "status": null,
+      "hex": "030101"
+    },
+    {
+      "id": "get-info-response",
+      "kind": "response",
+      "opcode": 1,
+      "sequence": 1,
+      "status": "OK",
+      "hex": "03010100030003312e3001"
+    },
+    {
+      "id": "get-status-request",
+      "kind": "request",
+      "opcode": 2,
+      "sequence": 2,
+      "status": null,
+      "hex": "030202"
+    },
+    {
+      "id": "get-status-response",
+      "kind": "response",
+      "opcode": 2,
+      "sequence": 2,
+      "status": "OK",
+      "hex": "0302020002000000000101000000"
+    },
+    {
+      "id": "set-credentials-request",
+      "kind": "request",
+      "opcode": 5,
+      "sequence": 3,
+      "status": null,
+      "hex": "030503034d54420170617373776f72640201"
+    },
+    {
+      "id": "set-credentials-accepted",
+      "kind": "response",
+      "opcode": 5,
+      "sequence": 3,
+      "status": "ACCEPTED",
+      "hex": "03050301"
+    },
+    {
+      "id": "connect-request",
+      "kind": "request",
+      "opcode": 6,
+      "sequence": 4,
+      "status": null,
+      "hex": "030604"
+    },
+    {
+      "id": "connect-busy",
+      "kind": "response",
+      "opcode": 6,
+      "sequence": 4,
+      "status": "BUSY",
+      "hex": "03060402"
+    },
+    {
+      "id": "wifi-status-event",
+      "kind": "event",
+      "opcode": 240,
+      "sequence": 0,
+      "status": "OK",
+      "hex": "03f0000006000000000101000000"
+    },
+    {
+      "id": "unknown-operation",
+      "kind": "response",
+      "opcode": 127,
+      "sequence": 9,
+      "status": "UNSUPPORTED",
+      "hex": "037f0908"
+    }
+  ]
+}

@@ -1,0 +1,136 @@
+schema_version: 1
+protocol:
+  name: device-link
+  major: 3
+  minor: 0
+  repository_version: 0.1.0
+  byte_order: little
+  service_uuid: 8f2a8c10-65f6-4f44-9c04-9c4c2f7b6a31
+  characteristics:
+    command_rx:
+      uuid: 8f2a8c11-65f6-4f44-9c04-9c4c2f7b6a31
+      properties: [write]
+      max_value_bytes: 244
+    event_tx:
+      uuid: 8f2a8c12-65f6-4f44-9c04-9c4c2f7b6a31
+      properties: [notify]
+      max_value_bytes: 244
+  advertising:
+    local_name_prefix: MT
+    service_uuid_required: true
+    pairing_window_in_service_data: false
+  security:
+    transport: ble_le_secure_connections
+    sc_only: true
+    mitm: true
+    bonding: false
+    pairing_window: physical_confirmation
+    characteristic_requires_encrypted_authenticated_link: true
+  transport:
+    request_header_bytes: 3
+    response_header_bytes: 4
+    request_header: [version, opcode, sequence]
+    response_header: [version, opcode, sequence, status]
+    event_sequence: 0
+    minimum_att_mtu: 247
+    maximum_value_bytes: 244
+    fragmented_messages: false
+    little_endian_fixed_integers: true
+    one_outstanding_request: true
+  limits:
+    max_ssid_bytes: 32
+    max_password_bytes: 64
+    max_scan_networks_per_page: 4
+    max_firmware_version_bytes: 32
+
+status_codes:
+  OK: 0
+  ACCEPTED: 1
+  BUSY: 2
+  INVALID_ARGUMENT: 3
+  NOT_FOUND: 4
+  UNAVAILABLE: 5
+  STORAGE: 6
+  INTERNAL: 7
+  UNSUPPORTED: 8
+
+enums:
+  wifi_security:
+    OPEN: 1
+    PERSONAL: 2
+  wifi_state:
+    UNAVAILABLE: 1
+    IDLE: 2
+    SCANNING: 3
+    CONNECTING: 4
+    OBTAINING_IP: 5
+    CONNECTED: 6
+    RETRY_WAIT: 7
+    SUSPENDED: 8
+  wifi_failure:
+    NONE: 0
+    AUTHENTICATION: 1
+    AP_NOT_FOUND: 2
+    TIMEOUT: 3
+    LINK_LOST: 4
+    RADIO: 5
+    STORAGE: 6
+    INTERNAL: 7
+
+commands:
+  - id: 1
+    name: GET_INFO
+    request: []
+    response: [protocol_major:u8, protocol_minor:u8, firmware_version:string_u8, pairing_window:bool]
+    asynchronous: false
+  - id: 2
+    name: GET_STATUS
+    request: []
+    response: [wifi_state:enum_u8(wifi_state), failure:enum_u8(wifi_failure), ssid:bytes_u8, has_ipv4:bool, profile_persisted:bool, auto_connect:bool, revision:u32]
+    asynchronous: false
+  - id: 3
+    name: START_SCAN
+    request: [force_refresh:bool]
+    response: []
+    event: WIFI_STATUS
+    asynchronous: true
+  - id: 4
+    name: GET_SCAN_PAGE
+    request: [generation:u32, page:u8]
+    response: [generation:u32, page:u8, has_more:bool, "networks:scan_network[4]"]
+    asynchronous: false
+  - id: 5
+    name: SET_CREDENTIALS
+    request: [ssid:bytes_u8, password:bytes_u8, security:enum_u8(wifi_security), auto_connect:bool]
+    response: []
+    event: WIFI_STATUS
+    asynchronous: true
+  - id: 6
+    name: CONNECT
+    request: []
+    response: []
+    event: WIFI_STATUS
+    asynchronous: true
+  - id: 7
+    name: DISCONNECT
+    request: []
+    response: []
+    event: WIFI_STATUS
+    asynchronous: true
+  - id: 8
+    name: FORGET
+    request: []
+    response: []
+    event: WIFI_STATUS
+    asynchronous: true
+  - id: 9
+    name: SET_AUTO_CONNECT
+    request: [enabled:bool]
+    response: []
+    event: WIFI_STATUS
+    asynchronous: true
+
+events:
+  - id: 240
+    name: WIFI_STATUS
+    payload: [wifi_state:enum_u8(wifi_state), failure:enum_u8(wifi_failure), ssid:bytes_u8, has_ipv4:bool, profile_persisted:bool, auto_connect:bool, revision:u32]
