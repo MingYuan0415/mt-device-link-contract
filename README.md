@@ -24,6 +24,7 @@ it is not linked into firmware or the App.
 ## Repository checks
 
 ```text
+python -m pip install PyYAML
 python -m tooling.check
 python -m unittest discover -s tests -v
 ```
