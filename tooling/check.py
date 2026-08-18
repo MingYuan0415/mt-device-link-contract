@@ -24,6 +24,10 @@ def require(condition: bool, message: str) -> None:
         raise ContractError(message)
 
 
+def validate_att_mtu(mtu: int) -> None:
+    require(isinstance(mtu, int) and mtu >= 247, "ATT MTU must be at least 247")
+
+
 def load_protocol() -> dict[str, Any]:
     value = yaml.safe_load(PROTOCOL_PATH.read_text(encoding="utf-8"))
     require(isinstance(value, dict), "protocol root must be a mapping")
@@ -67,6 +71,7 @@ def validate_protocol(protocol: dict[str, Any]) -> None:
     }, "security policy changed")
 
     transport = data.get("transport")
+    validate_att_mtu(transport["minimum_att_mtu"])
     require(transport["request_header_bytes"] == 3 and
             transport["response_header_bytes"] == 4,
             "header sizes changed")
@@ -80,6 +85,23 @@ def validate_protocol(protocol: dict[str, Any]) -> None:
             transport["fragmented_messages"] is False and
             transport["one_outstanding_request"] is True,
             "transport limits changed")
+
+    limits = data.get("limits")
+    require(limits == {
+        "max_ssid_bytes": 32,
+        "max_password_bytes": 64,
+        "max_scan_networks_per_page": 4,
+        "max_firmware_version_bytes": 32,
+    }, "field limits changed")
+    require(data.get("types") == {
+        "scan_network": {
+            "fields": [
+                "ssid:bytes_u8(max=32)",
+                "security:enum_u8(wifi_security)",
+                "rssi_dbm:i8",
+            ],
+        },
+    }, "scan network type changed")
 
     statuses = protocol.get("status_codes")
     require(statuses == {
@@ -116,6 +138,13 @@ def validate_protocol(protocol: dict[str, Any]) -> None:
         else:
             require(item.get("asynchronous") is False,
                     f"{item['name']} must be synchronous")
+    get_scan_page = commands[3]
+    require(get_scan_page["request"] == ["generation:u32", "page:u8"],
+            "scan page request layout changed")
+    require(get_scan_page["response"] == [
+        "generation:u32", "page:u8", "has_more:bool", "count:u8",
+        "networks:scan_network[count]",
+    ], "scan page response layout changed")
 
     events = protocol.get("events")
     require(events == [{
@@ -172,7 +201,7 @@ def validate_vectors(protocol: dict[str, Any]) -> None:
     vectors = json.loads(VECTORS_PATH.read_text(encoding="utf-8"))
     require(vectors.get("protocol") == "device-link/v3", "vector protocol mismatch")
     cases = vectors.get("cases")
-    require(isinstance(cases, list) and len(cases) == 10, "vector coverage changed")
+    require(isinstance(cases, list) and len(cases) == 21, "vector coverage changed")
     ids = [case.get("id") for case in cases]
     require(len(ids) == len(set(ids)), "duplicate vector IDs")
     for case in cases:

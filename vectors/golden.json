@@ -66,6 +66,94 @@
       "hex": "03060402"
     },
     {
+      "id": "connect-accepted",
+      "kind": "response",
+      "opcode": 6,
+      "sequence": 4,
+      "status": "ACCEPTED",
+      "hex": "03060401"
+    },
+    {
+      "id": "start-scan-request",
+      "kind": "request",
+      "opcode": 3,
+      "sequence": 5,
+      "status": null,
+      "hex": "03030500"
+    },
+    {
+      "id": "start-scan-accepted",
+      "kind": "response",
+      "opcode": 3,
+      "sequence": 5,
+      "status": "ACCEPTED",
+      "hex": "03030501"
+    },
+    {
+      "id": "scan-page-request",
+      "kind": "request",
+      "opcode": 4,
+      "sequence": 6,
+      "status": null,
+      "hex": "0304060100000000"
+    },
+    {
+      "id": "scan-page-response",
+      "kind": "response",
+      "opcode": 4,
+      "sequence": 6,
+      "status": "OK",
+      "hex": "0304060001000000000001024d5402d6"
+    },
+    {
+      "id": "disconnect-request",
+      "kind": "request",
+      "opcode": 7,
+      "sequence": 7,
+      "status": null,
+      "hex": "030707"
+    },
+    {
+      "id": "disconnect-accepted",
+      "kind": "response",
+      "opcode": 7,
+      "sequence": 7,
+      "status": "ACCEPTED",
+      "hex": "03070701"
+    },
+    {
+      "id": "forget-request",
+      "kind": "request",
+      "opcode": 8,
+      "sequence": 8,
+      "status": null,
+      "hex": "030808"
+    },
+    {
+      "id": "forget-accepted",
+      "kind": "response",
+      "opcode": 8,
+      "sequence": 8,
+      "status": "ACCEPTED",
+      "hex": "03080801"
+    },
+    {
+      "id": "set-auto-connect-request",
+      "kind": "request",
+      "opcode": 9,
+      "sequence": 9,
+      "status": null,
+      "hex": "03090901"
+    },
+    {
+      "id": "set-auto-connect-accepted",
+      "kind": "response",
+      "opcode": 9,
+      "sequence": 9,
+      "status": "ACCEPTED",
+      "hex": "03090901"
+    },
+    {
       "id": "wifi-status-event",
       "kind": "event",
       "opcode": 240,

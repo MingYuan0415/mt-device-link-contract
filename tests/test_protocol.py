@@ -4,8 +4,9 @@ import json
 import unittest
 from pathlib import Path
 
-from tooling.check import (ContractError, load_protocol, validate_protocol,
-                           validate_vector, validate_vectors)
+from tooling.check import (ContractError, load_protocol, normalized_digest,
+                           validate_att_mtu, validate_protocol, validate_vector,
+                           validate_vectors)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,22 @@ class ProtocolTest(unittest.TestCase):
         case["hex"] = "03"
         with self.assertRaises(ContractError):
             validate_vector(self.protocol, case)
+        with self.assertRaises(ContractError):
+            validate_att_mtu(246)
+        validate_att_mtu(247)
+
+    def test_digest_is_independent_of_json_whitespace(self) -> None:
+        digest = normalized_digest(self.protocol)
+        compact = json.dumps(self.protocol, separators=(",", ":"), sort_keys=True)
+        pretty = json.dumps(self.protocol, indent=2, sort_keys=True)
+        self.assertEqual(
+            digest,
+            __import__("hashlib").sha256(
+                json.dumps(json.loads(compact), sort_keys=True, separators=(",", ":"))
+                .encode()
+            ).hexdigest(),
+        )
+        self.assertNotEqual(compact, pretty)
 
 
 if __name__ == "__main__":

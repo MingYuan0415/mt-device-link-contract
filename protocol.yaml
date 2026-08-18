@@ -43,6 +43,10 @@ protocol:
     max_scan_networks_per_page: 4
     max_firmware_version_bytes: 32
 
+  types:
+    scan_network:
+      fields: [ssid:bytes_u8(max=32), security:enum_u8(wifi_security), rssi_dbm:i8]
+
 status_codes:
   OK: 0
   ACCEPTED: 1
@@ -97,7 +101,7 @@ commands:
   - id: 4
     name: GET_SCAN_PAGE
     request: [generation:u32, page:u8]
-    response: [generation:u32, page:u8, has_more:bool, "networks:scan_network[4]"]
+    response: [generation:u32, page:u8, has_more:bool, count:u8, "networks:scan_network[count]"]
     asynchronous: false
   - id: 5
     name: SET_CREDENTIALS
