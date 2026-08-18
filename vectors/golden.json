@@ -39,7 +39,7 @@
       "opcode": 5,
       "sequence": 3,
       "status": null,
-      "hex": "030503034d54420170617373776f72640201"
+      "hex": "030503034d54420870617373776f72640201"
     },
     {
       "id": "set-credentials-accepted",
