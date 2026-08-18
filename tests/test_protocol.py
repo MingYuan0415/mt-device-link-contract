@@ -4,6 +4,8 @@ import json
 import unittest
 from pathlib import Path
 
+import yaml
+
 from tooling.check import (ContractError, load_protocol, normalized_digest,
                            validate_att_mtu, validate_protocol, validate_vector,
                            validate_vectors)
@@ -49,6 +51,9 @@ class ProtocolTest(unittest.TestCase):
             ).hexdigest(),
         )
         self.assertNotEqual(compact, pretty)
+        yaml_text = (ROOT / "protocol.yaml").read_text(encoding="utf-8")
+        crlf_protocol = yaml.safe_load(yaml_text.replace("\n", "\r\n"))
+        self.assertEqual(digest, normalized_digest(crlf_protocol))
 
 
 if __name__ == "__main__":
