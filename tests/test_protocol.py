@@ -39,6 +39,23 @@ class ProtocolTest(unittest.TestCase):
             validate_att_mtu(246)
         validate_att_mtu(247)
 
+    def test_truncated_payload_is_rejected(self) -> None:
+        vectors = json.loads((ROOT / "vectors/golden.json").read_text())
+        case = next(item for item in vectors["cases"] if item["id"] == "get-info-response")
+        case["hex"] = "03010100"
+        with self.assertRaises(ContractError):
+            validate_vector(self.protocol, case)
+
+    def test_vectors_cover_all_commands_and_unknown_opcode(self) -> None:
+        vectors = json.loads((ROOT / "vectors/golden.json").read_text())
+        request_opcodes = {
+            item["opcode"] for item in vectors["cases"] if item["kind"] == "request"
+        }
+        self.assertEqual(set(range(1, 10)), request_opcodes)
+        unknown = next(item for item in vectors["cases"] if item["id"] == "unknown-operation")
+        self.assertEqual(127, unknown["opcode"])
+        self.assertEqual("UNSUPPORTED", unknown["status"])
+
     def test_digest_is_independent_of_json_whitespace(self) -> None:
         digest = normalized_digest(self.protocol)
         compact = json.dumps(self.protocol, separators=(",", ":"), sort_keys=True)

@@ -170,6 +170,122 @@ def _status_value(protocol: dict[str, Any], status: str | None) -> int:
     return statuses[status]
 
 
+def _read_u8(raw: bytes, offset: int, label: str) -> tuple[int, int]:
+    require(offset < len(raw), f"truncated {label}")
+    return raw[offset], offset + 1
+
+
+def _read_u32(raw: bytes, offset: int, label: str) -> tuple[int, int]:
+    require(offset + 4 <= len(raw), f"truncated {label}")
+    return int.from_bytes(raw[offset:offset + 4], "little"), offset + 4
+
+
+def _read_bool(raw: bytes, offset: int, label: str) -> tuple[bool, int]:
+    value, offset = _read_u8(raw, offset, label)
+    require(value in {0, 1}, f"invalid {label} bool")
+    return value == 1, offset
+
+
+def _read_bytes_u8(
+    raw: bytes,
+    offset: int,
+    maximum: int,
+    label: str,
+) -> tuple[bytes, int]:
+    length, offset = _read_u8(raw, offset, f"{label} length")
+    require(length <= maximum, f"{label} exceeds {maximum} bytes")
+    end = offset + length
+    require(end <= len(raw), f"truncated {label}")
+    return raw[offset:end], end
+
+
+def _require_end(raw: bytes, offset: int, label: str) -> None:
+    require(offset == len(raw), f"trailing bytes in {label}")
+
+
+def _validate_info_payload(raw: bytes, label: str) -> None:
+    offset = 0
+    _, offset = _read_u8(raw, offset, f"{label} protocol major")
+    _, offset = _read_u8(raw, offset, f"{label} protocol minor")
+    _, offset = _read_bytes_u8(raw, offset, 32, f"{label} firmware version")
+    _, offset = _read_bool(raw, offset, f"{label} pairing window")
+    _require_end(raw, offset, label)
+
+
+def _validate_wifi_status_payload(raw: bytes, label: str) -> None:
+    offset = 0
+    state, offset = _read_u8(raw, offset, f"{label} state")
+    failure, offset = _read_u8(raw, offset, f"{label} failure")
+    require(1 <= state <= 8, f"invalid {label} state")
+    require(0 <= failure <= 7, f"invalid {label} failure")
+    _, offset = _read_bytes_u8(raw, offset, 32, f"{label} SSID")
+    for field in ("has_ipv4", "profile_persisted", "auto_connect"):
+        _, offset = _read_bool(raw, offset, f"{label} {field}")
+    _, offset = _read_u32(raw, offset, f"{label} revision")
+    _require_end(raw, offset, label)
+
+
+def _validate_scan_page_payload(raw: bytes, label: str) -> None:
+    offset = 0
+    _, offset = _read_u32(raw, offset, f"{label} generation")
+    _, offset = _read_u8(raw, offset, f"{label} page")
+    _, offset = _read_bool(raw, offset, f"{label} has_more")
+    count, offset = _read_u8(raw, offset, f"{label} count")
+    require(count <= 4, f"{label} contains too many networks")
+    for index in range(count):
+        _, offset = _read_bytes_u8(raw, offset, 32, f"{label} network {index} SSID")
+        security, offset = _read_u8(raw, offset, f"{label} network {index} security")
+        require(security in {1, 2}, f"invalid {label} network {index} security")
+        _, offset = _read_u8(raw, offset, f"{label} network {index} RSSI")
+    _require_end(raw, offset, label)
+
+
+def _validate_credentials_payload(raw: bytes, label: str) -> None:
+    offset = 0
+    _, offset = _read_bytes_u8(raw, offset, 32, f"{label} SSID")
+    _, offset = _read_bytes_u8(raw, offset, 64, f"{label} password")
+    security, offset = _read_u8(raw, offset, f"{label} security")
+    require(security in {1, 2}, f"invalid {label} security")
+    _, offset = _read_bool(raw, offset, f"{label} auto_connect")
+    _require_end(raw, offset, label)
+
+
+def _validate_payload(protocol: dict[str, Any], case: dict[str, Any], raw: bytes) -> None:
+    kind = case["kind"]
+    opcode = case["opcode"]
+    label = case["id"]
+    if kind == "request":
+        payload = raw[3:]
+        if opcode == 3 or opcode == 9:
+            _, offset = _read_bool(payload, 0, label)
+            _require_end(payload, offset, label)
+        elif opcode == 4:
+            _, offset = _read_u32(payload, 0, f"{label} generation")
+            _, offset = _read_u8(payload, offset, f"{label} page")
+            _require_end(payload, offset, label)
+        elif opcode == 5:
+            _validate_credentials_payload(payload, label)
+        elif opcode in {1, 2, 6, 7, 8}:
+            require(not payload, f"unexpected request payload: {label}")
+        else:
+            require(not payload, f"unknown opcode request must be empty: {label}")
+        return
+
+    payload = raw[4:]
+    status = case["status"]
+    if kind == "event":
+        require(status == "OK", f"event status must be OK: {label}")
+        _validate_wifi_status_payload(payload, label)
+    elif opcode == 1 and status == "OK":
+        _validate_info_payload(payload, label)
+    elif opcode == 2 and status == "OK":
+        _validate_wifi_status_payload(payload, label)
+    elif opcode == 4 and status == "OK":
+        _validate_scan_page_payload(payload, label)
+    else:
+        require(not payload, f"unexpected response payload: {label}")
+
+
 def validate_vector(protocol: dict[str, Any], case: dict[str, Any]) -> None:
     require(set(case) == {"id", "kind", "opcode", "sequence", "status", "hex"},
             f"vector keys changed: {case.get('id')}")
@@ -195,6 +311,7 @@ def validate_vector(protocol: dict[str, Any], case: dict[str, Any]) -> None:
         if kind == "event":
             require(case["sequence"] == 0 and case["opcode"] == 240,
                     f"event identity mismatch: {case['id']}")
+    _validate_payload(protocol, case, raw)
 
 
 def validate_vectors(protocol: dict[str, Any]) -> None:
@@ -206,6 +323,15 @@ def validate_vectors(protocol: dict[str, Any]) -> None:
     require(len(ids) == len(set(ids)), "duplicate vector IDs")
     for case in cases:
         validate_vector(protocol, case)
+    require(
+        {case["opcode"] for case in cases if case["kind"] == "request"} == set(range(1, 10)),
+        "request vectors must cover every command",
+    )
+    require(
+        any(case["id"] == "unknown-operation" and case["opcode"] == 127
+            for case in cases),
+        "an explicit unknown-opcode vector is required",
+    )
 
 
 def normalized_digest(protocol: dict[str, Any]) -> str:
