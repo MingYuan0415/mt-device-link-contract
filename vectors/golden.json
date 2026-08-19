@@ -1,173 +1,1985 @@
 {
-  "protocol": "device-link/v3",
-  "cases": [
+  "format_version": 2,
+  "protocol": "device-link/v1",
+  "messages": {
+    "valid": [
+      {
+        "id": "get-info-request",
+        "kind": "request",
+        "opcode": 1,
+        "request_id": 1,
+        "status": null,
+        "hex": "0101"
+      },
+      {
+        "id": "get-status-request",
+        "kind": "request",
+        "opcode": 2,
+        "request_id": 2,
+        "status": null,
+        "hex": "0202"
+      },
+      {
+        "id": "scan-request",
+        "kind": "request",
+        "opcode": 3,
+        "request_id": 3,
+        "status": null,
+        "hex": "0303"
+      },
+      {
+        "id": "set-credentials-request",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 4,
+        "status": null,
+        "hex": "0404024d540870617373776f726402"
+      },
+      {
+        "id": "connect-request",
+        "kind": "request",
+        "opcode": 5,
+        "request_id": 5,
+        "status": null,
+        "hex": "0505"
+      },
+      {
+        "id": "disconnect-request",
+        "kind": "request",
+        "opcode": 6,
+        "request_id": 6,
+        "status": null,
+        "hex": "0606"
+      },
+      {
+        "id": "forget-request",
+        "kind": "request",
+        "opcode": 7,
+        "request_id": 7,
+        "status": null,
+        "hex": "0707"
+      },
+      {
+        "id": "credentials-ssid-min",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 10,
+        "status": null,
+        "hex": "040a01410001"
+      },
+      {
+        "id": "credentials-ssid-max",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 11,
+        "status": null,
+        "hex": "040b2053535353535353535353535353535353535353535353535353535353535353530001"
+      },
+      {
+        "id": "credentials-password-min",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 12,
+        "status": null,
+        "hex": "040c01410870617373776f726402"
+      },
+      {
+        "id": "credentials-password-max",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 13,
+        "status": null,
+        "hex": "040d01413f50505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505002"
+      },
+      {
+        "id": "credentials-utf8-ssid",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 14,
+        "status": null,
+        "hex": "040e06e7bd91e7bb9c0870617373776f726402"
+      },
+      {
+        "id": "credentials-password-octet-bounds",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 15,
+        "status": null,
+        "hex": "040f01410820217d7e4142434402"
+      },
+      {
+        "id": "get-info-response",
+        "kind": "response",
+        "opcode": 1,
+        "request_id": 20,
+        "status": "OK",
+        "hex": "811400010001020301f201"
+      },
+      {
+        "id": "get-info-status-invalid-argument",
+        "kind": "response",
+        "opcode": 1,
+        "request_id": 21,
+        "status": "INVALID_ARGUMENT",
+        "hex": "811503"
+      },
+      {
+        "id": "get-info-status-internal",
+        "kind": "response",
+        "opcode": 1,
+        "request_id": 22,
+        "status": "INTERNAL",
+        "hex": "811609"
+      },
+      {
+        "id": "get-status-response",
+        "kind": "response",
+        "opcode": 2,
+        "request_id": 23,
+        "status": "OK",
+        "hex": "821700020000"
+      },
+      {
+        "id": "get-status-status-invalid-argument",
+        "kind": "response",
+        "opcode": 2,
+        "request_id": 24,
+        "status": "INVALID_ARGUMENT",
+        "hex": "821803"
+      },
+      {
+        "id": "get-status-status-mtu-too-small",
+        "kind": "response",
+        "opcode": 2,
+        "request_id": 25,
+        "status": "MTU_TOO_SMALL",
+        "hex": "821907"
+      },
+      {
+        "id": "get-status-status-internal",
+        "kind": "response",
+        "opcode": 2,
+        "request_id": 26,
+        "status": "INTERNAL",
+        "hex": "821a09"
+      },
+      {
+        "id": "scan-status-accepted",
+        "kind": "response",
+        "opcode": 3,
+        "request_id": 27,
+        "status": "ACCEPTED",
+        "hex": "831b01"
+      },
+      {
+        "id": "scan-status-invalid-argument",
+        "kind": "response",
+        "opcode": 3,
+        "request_id": 28,
+        "status": "INVALID_ARGUMENT",
+        "hex": "831c03"
+      },
+      {
+        "id": "scan-status-busy",
+        "kind": "response",
+        "opcode": 3,
+        "request_id": 29,
+        "status": "BUSY",
+        "hex": "831d02"
+      },
+      {
+        "id": "scan-status-unavailable",
+        "kind": "response",
+        "opcode": 3,
+        "request_id": 30,
+        "status": "UNAVAILABLE",
+        "hex": "831e05"
+      },
+      {
+        "id": "scan-status-mtu-too-small",
+        "kind": "response",
+        "opcode": 3,
+        "request_id": 31,
+        "status": "MTU_TOO_SMALL",
+        "hex": "831f07"
+      },
+      {
+        "id": "scan-status-internal",
+        "kind": "response",
+        "opcode": 3,
+        "request_id": 32,
+        "status": "INTERNAL",
+        "hex": "832009"
+      },
+      {
+        "id": "set-credentials-status-accepted",
+        "kind": "response",
+        "opcode": 4,
+        "request_id": 33,
+        "status": "ACCEPTED",
+        "hex": "842101"
+      },
+      {
+        "id": "set-credentials-status-invalid-argument",
+        "kind": "response",
+        "opcode": 4,
+        "request_id": 34,
+        "status": "INVALID_ARGUMENT",
+        "hex": "842203"
+      },
+      {
+        "id": "set-credentials-status-busy",
+        "kind": "response",
+        "opcode": 4,
+        "request_id": 35,
+        "status": "BUSY",
+        "hex": "842302"
+      },
+      {
+        "id": "set-credentials-status-storage",
+        "kind": "response",
+        "opcode": 4,
+        "request_id": 36,
+        "status": "STORAGE",
+        "hex": "842406"
+      },
+      {
+        "id": "set-credentials-status-unavailable",
+        "kind": "response",
+        "opcode": 4,
+        "request_id": 37,
+        "status": "UNAVAILABLE",
+        "hex": "842505"
+      },
+      {
+        "id": "set-credentials-status-mtu-too-small",
+        "kind": "response",
+        "opcode": 4,
+        "request_id": 38,
+        "status": "MTU_TOO_SMALL",
+        "hex": "842607"
+      },
+      {
+        "id": "set-credentials-status-internal",
+        "kind": "response",
+        "opcode": 4,
+        "request_id": 39,
+        "status": "INTERNAL",
+        "hex": "842709"
+      },
+      {
+        "id": "connect-status-accepted",
+        "kind": "response",
+        "opcode": 5,
+        "request_id": 40,
+        "status": "ACCEPTED",
+        "hex": "852801"
+      },
+      {
+        "id": "connect-status-invalid-argument",
+        "kind": "response",
+        "opcode": 5,
+        "request_id": 41,
+        "status": "INVALID_ARGUMENT",
+        "hex": "852903"
+      },
+      {
+        "id": "connect-status-busy",
+        "kind": "response",
+        "opcode": 5,
+        "request_id": 42,
+        "status": "BUSY",
+        "hex": "852a02"
+      },
+      {
+        "id": "connect-status-not-found",
+        "kind": "response",
+        "opcode": 5,
+        "request_id": 43,
+        "status": "NOT_FOUND",
+        "hex": "852b04"
+      },
+      {
+        "id": "connect-status-unavailable",
+        "kind": "response",
+        "opcode": 5,
+        "request_id": 44,
+        "status": "UNAVAILABLE",
+        "hex": "852c05"
+      },
+      {
+        "id": "connect-status-storage",
+        "kind": "response",
+        "opcode": 5,
+        "request_id": 83,
+        "status": "STORAGE",
+        "hex": "855306"
+      },
+      {
+        "id": "connect-status-mtu-too-small",
+        "kind": "response",
+        "opcode": 5,
+        "request_id": 45,
+        "status": "MTU_TOO_SMALL",
+        "hex": "852d07"
+      },
+      {
+        "id": "connect-status-internal",
+        "kind": "response",
+        "opcode": 5,
+        "request_id": 46,
+        "status": "INTERNAL",
+        "hex": "852e09"
+      },
+      {
+        "id": "disconnect-status-accepted",
+        "kind": "response",
+        "opcode": 6,
+        "request_id": 47,
+        "status": "ACCEPTED",
+        "hex": "862f01"
+      },
+      {
+        "id": "disconnect-status-invalid-argument",
+        "kind": "response",
+        "opcode": 6,
+        "request_id": 48,
+        "status": "INVALID_ARGUMENT",
+        "hex": "863003"
+      },
+      {
+        "id": "disconnect-status-busy",
+        "kind": "response",
+        "opcode": 6,
+        "request_id": 49,
+        "status": "BUSY",
+        "hex": "863102"
+      },
+      {
+        "id": "disconnect-status-unavailable",
+        "kind": "response",
+        "opcode": 6,
+        "request_id": 50,
+        "status": "UNAVAILABLE",
+        "hex": "863205"
+      },
+      {
+        "id": "disconnect-status-mtu-too-small",
+        "kind": "response",
+        "opcode": 6,
+        "request_id": 51,
+        "status": "MTU_TOO_SMALL",
+        "hex": "863307"
+      },
+      {
+        "id": "disconnect-status-internal",
+        "kind": "response",
+        "opcode": 6,
+        "request_id": 52,
+        "status": "INTERNAL",
+        "hex": "863409"
+      },
+      {
+        "id": "forget-status-accepted",
+        "kind": "response",
+        "opcode": 7,
+        "request_id": 53,
+        "status": "ACCEPTED",
+        "hex": "873501"
+      },
+      {
+        "id": "forget-status-invalid-argument",
+        "kind": "response",
+        "opcode": 7,
+        "request_id": 54,
+        "status": "INVALID_ARGUMENT",
+        "hex": "873603"
+      },
+      {
+        "id": "forget-status-busy",
+        "kind": "response",
+        "opcode": 7,
+        "request_id": 55,
+        "status": "BUSY",
+        "hex": "873702"
+      },
+      {
+        "id": "forget-status-not-found",
+        "kind": "response",
+        "opcode": 7,
+        "request_id": 56,
+        "status": "NOT_FOUND",
+        "hex": "873804"
+      },
+      {
+        "id": "forget-status-storage",
+        "kind": "response",
+        "opcode": 7,
+        "request_id": 57,
+        "status": "STORAGE",
+        "hex": "873906"
+      },
+      {
+        "id": "forget-status-unavailable",
+        "kind": "response",
+        "opcode": 7,
+        "request_id": 58,
+        "status": "UNAVAILABLE",
+        "hex": "873a05"
+      },
+      {
+        "id": "forget-status-mtu-too-small",
+        "kind": "response",
+        "opcode": 7,
+        "request_id": 59,
+        "status": "MTU_TOO_SMALL",
+        "hex": "873b07"
+      },
+      {
+        "id": "forget-status-internal",
+        "kind": "response",
+        "opcode": 7,
+        "request_id": 60,
+        "status": "INTERNAL",
+        "hex": "873c09"
+      },
+      {
+        "id": "get-info-mtu23-response",
+        "kind": "response",
+        "opcode": 1,
+        "request_id": 80,
+        "status": "OK",
+        "hex": "815000010009080700f201"
+      },
+      {
+        "id": "get-status-profile-max",
+        "kind": "response",
+        "opcode": 2,
+        "request_id": 81,
+        "status": "OK",
+        "hex": "8251000200205353535353535353535353535353535353535353535353535353535353535353"
+      },
+      {
+        "id": "get-status-unavailable",
+        "kind": "response",
+        "opcode": 2,
+        "request_id": 84,
+        "status": "OK",
+        "hex": "825400010500"
+      },
+      {
+        "id": "unknown-operation-response",
+        "kind": "response",
+        "opcode": 127,
+        "request_id": 82,
+        "status": "UNSUPPORTED",
+        "hex": "ff5208"
+      },
+      {
+        "id": "wifi-status-unavailable-radio",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f001010500"
+      },
+      {
+        "id": "wifi-status-unavailable-internal",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f001010700"
+      },
+      {
+        "id": "wifi-status-idle-none",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f001020000"
+      },
+      {
+        "id": "wifi-status-scanning-none",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f001030000"
+      },
+      {
+        "id": "wifi-status-connecting-none",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f0010400024d54"
+      },
+      {
+        "id": "wifi-status-connected-none",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f0010500024d54"
+      },
+      {
+        "id": "wifi-status-error-authentication",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f0010601024d54"
+      },
+      {
+        "id": "wifi-status-error-ap-not-found",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f0010602024d54"
+      },
+      {
+        "id": "wifi-status-error-timeout",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f0010603024d54"
+      },
+      {
+        "id": "wifi-status-error-link-lost",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f0010604024d54"
+      },
+      {
+        "id": "wifi-status-error-radio",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f001060500"
+      },
+      {
+        "id": "wifi-status-error-storage",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f001060600"
+      },
+      {
+        "id": "wifi-status-error-internal",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f001060700"
+      },
+      {
+        "id": "wifi-status-profile-max",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f0010200205353535353535353535353535353535353535353535353535353535353535353"
+      },
+      {
+        "id": "scan-complete-empty",
+        "kind": "event",
+        "event_id": 2,
+        "status": null,
+        "hex": "f002030000"
+      },
+      {
+        "id": "scan-complete-max",
+        "kind": "event",
+        "event_id": 2,
+        "status": null,
+        "hex": "f00203000520414141414141414141414141414141414141414141414141414141414141414101ec20424242424242424242424242424242424242424242424242424242424242424202e220434343434343434343434343434343434343434343434343434343434343434301d820444444444444444444444444444444444444444444444444444444444444444402ce20454545454545454545454545454545454545454545454545454545454545454501c4"
+      },
+      {
+        "id": "scan-complete-rssi-bounds",
+        "kind": "event",
+        "event_id": 2,
+        "status": null,
+        "hex": "f0020400020141010001420281"
+      },
+      {
+        "id": "scan-distinct-normalization",
+        "kind": "event",
+        "event_id": 2,
+        "status": null,
+        "hex": "f0020500020365cc8101ec02c3a901ec"
+      },
+      {
+        "id": "scan-complete-timeout",
+        "kind": "event",
+        "event_id": 2,
+        "status": null,
+        "hex": "f002030300"
+      },
+      {
+        "id": "scan-complete-radio",
+        "kind": "event",
+        "event_id": 2,
+        "status": null,
+        "hex": "f002030500"
+      },
+      {
+        "id": "scan-complete-internal",
+        "kind": "event",
+        "event_id": 2,
+        "status": null,
+        "hex": "f002030700"
+      },
+      {
+        "id": "operation-set-credentials-none",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f0035a0400"
+      },
+      {
+        "id": "operation-set-credentials-storage",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f0035b0406"
+      },
+      {
+        "id": "operation-set-credentials-internal",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f0035c0407"
+      },
+      {
+        "id": "operation-connect-none",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f0035d0500"
+      },
+      {
+        "id": "operation-connect-authentication",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f0035e0501"
+      },
+      {
+        "id": "operation-connect-ap-not-found",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f0035f0502"
+      },
+      {
+        "id": "operation-connect-timeout",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f003600503"
+      },
+      {
+        "id": "operation-connect-link-lost",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f003610504"
+      },
+      {
+        "id": "operation-connect-radio",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f003620505"
+      },
+      {
+        "id": "operation-connect-storage",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f0036b0506"
+      },
+      {
+        "id": "operation-connect-internal",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f003630507"
+      },
+      {
+        "id": "operation-disconnect-none",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f003640600"
+      },
+      {
+        "id": "operation-disconnect-radio",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f003650605"
+      },
+      {
+        "id": "operation-disconnect-internal",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f003660607"
+      },
+      {
+        "id": "operation-forget-none",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f003670700"
+      },
+      {
+        "id": "operation-forget-storage",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f003680706"
+      },
+      {
+        "id": "operation-forget-radio",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f003690705"
+      },
+      {
+        "id": "operation-forget-internal",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f0036a0707"
+      }
+    ],
+    "invalid": [
+      {
+        "id": "request-id-zero",
+        "kind": "request",
+        "opcode": 1,
+        "request_id": 0,
+        "status": null,
+        "hex": "0100",
+        "expected_error": "VALUE"
+      },
+      {
+        "id": "credentials-empty-ssid",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 1,
+        "status": null,
+        "hex": "0401000001",
+        "expected_error": "LENGTH"
+      },
+      {
+        "id": "credentials-invalid-utf8",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 2,
+        "status": null,
+        "hex": "040202c3280870617373776f726402",
+        "expected_error": "UTF8"
+      },
+      {
+        "id": "credentials-control-ssid",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 3,
+        "status": null,
+        "hex": "0403034100420870617373776f726402",
+        "expected_error": "CONTROL"
+      },
+      {
+        "id": "credentials-open-password",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 4,
+        "status": null,
+        "hex": "040401410870617373776f726401",
+        "expected_error": "PASSWORD"
+      },
+      {
+        "id": "credentials-short-password",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 5,
+        "status": null,
+        "hex": "040501410573686f727402",
+        "expected_error": "PASSWORD"
+      },
+      {
+        "id": "credentials-nonprintable-password",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 6,
+        "status": null,
+        "hex": "0406014108706173731f6f726402",
+        "expected_error": "PASSWORD"
+      },
+      {
+        "id": "credentials-password-delete",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 17,
+        "status": null,
+        "hex": "0411014108706173737f6f726402",
+        "expected_error": "PASSWORD"
+      },
+      {
+        "id": "credentials-raw-psk-length",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 7,
+        "status": null,
+        "hex": "04070141406161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616102",
+        "expected_error": "LENGTH"
+      },
+      {
+        "id": "credentials-invalid-security",
+        "kind": "request",
+        "opcode": 4,
+        "request_id": 8,
+        "status": null,
+        "hex": "040801410003",
+        "expected_error": "ENUM"
+      },
+      {
+        "id": "scan-positive-rssi",
+        "kind": "event",
+        "event_id": 2,
+        "status": null,
+        "hex": "f0020300010141010a",
+        "expected_error": "RSSI"
+      },
+      {
+        "id": "scan-rssi-below-minimum",
+        "kind": "event",
+        "event_id": 2,
+        "status": null,
+        "hex": "f00203000101410180",
+        "expected_error": "RSSI"
+      },
+      {
+        "id": "scan-too-many",
+        "kind": "event",
+        "event_id": 2,
+        "status": null,
+        "hex": "f002030006014101f6014201ec014301e2014401d8014501ce014601c4",
+        "expected_error": "LENGTH"
+      },
+      {
+        "id": "scan-duplicate-ssid",
+        "kind": "event",
+        "event_id": 2,
+        "status": null,
+        "hex": "f002030002014101f6014102ec",
+        "expected_error": "SCAN_ORDER"
+      },
+      {
+        "id": "scan-noncanonical-order",
+        "kind": "event",
+        "event_id": 2,
+        "status": null,
+        "hex": "f002030002014201ec014101f6",
+        "expected_error": "SCAN_ORDER"
+      },
+      {
+        "id": "scan-failure-with-record",
+        "kind": "event",
+        "event_id": 2,
+        "status": null,
+        "hex": "f002030301014101f6",
+        "expected_error": "STATE"
+      },
+      {
+        "id": "status-connected-with-failure",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f0010501024d54",
+        "expected_error": "STATE"
+      },
+      {
+        "id": "status-connected-without-profile",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f001050000",
+        "expected_error": "STATE"
+      },
+      {
+        "id": "status-error-without-failure",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f0010600024d54",
+        "expected_error": "STATE"
+      },
+      {
+        "id": "status-invalid-profile-utf8",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f001020002c328",
+        "expected_error": "UTF8"
+      },
+      {
+        "id": "response-unknown-status",
+        "kind": "response",
+        "opcode": 5,
+        "request_id": 9,
+        "status": "UNKNOWN",
+        "hex": "850900",
+        "expected_error": "STATUS"
+      },
+      {
+        "id": "response-wrong-status",
+        "kind": "response",
+        "opcode": 5,
+        "request_id": 10,
+        "status": "OK",
+        "hex": "850a00",
+        "expected_error": "STATUS"
+      },
+      {
+        "id": "response-wrong-opcode",
+        "kind": "response",
+        "opcode": 5,
+        "request_id": 11,
+        "status": "ACCEPTED",
+        "hex": "860b01",
+        "expected_error": "HEADER"
+      },
+      {
+        "id": "response-payload-on-error",
+        "kind": "response",
+        "opcode": 5,
+        "request_id": 12,
+        "status": "BUSY",
+        "hex": "850c0201",
+        "expected_error": "PAYLOAD"
+      },
+      {
+        "id": "request-trailing-bytes",
+        "kind": "request",
+        "opcode": 1,
+        "request_id": 13,
+        "status": null,
+        "hex": "010d00",
+        "expected_error": "TRAILING"
+      },
+      {
+        "id": "event-unknown-id",
+        "kind": "event",
+        "event_id": 9,
+        "status": null,
+        "hex": "f009",
+        "expected_error": "ENUM"
+      },
+      {
+        "id": "event-wrong-marker",
+        "kind": "event",
+        "event_id": 1,
+        "status": null,
+        "hex": "f101020000",
+        "expected_error": "HEADER"
+      },
+      {
+        "id": "operation-invalid-failure",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f003010401",
+        "expected_error": "STATE"
+      },
+      {
+        "id": "operation-request-id-zero",
+        "kind": "event",
+        "event_id": 3,
+        "status": null,
+        "hex": "f003000400",
+        "expected_error": "HEADER"
+      },
+      {
+        "id": "get-info-wrong-version",
+        "kind": "response",
+        "opcode": 1,
+        "request_id": 14,
+        "status": "OK",
+        "hex": "810e00020001020301f201",
+        "expected_error": "VERSION"
+      },
+      {
+        "id": "get-info-wrong-mtu",
+        "kind": "response",
+        "opcode": 1,
+        "request_id": 15,
+        "status": "OK",
+        "hex": "810f00010001020301f101",
+        "expected_error": "TRANSPORT_MATH"
+      },
+      {
+        "id": "get-info-invalid-bool",
+        "kind": "response",
+        "opcode": 1,
+        "request_id": 16,
+        "status": "OK",
+        "hex": "811000010001020302f201",
+        "expected_error": "BOOLEAN"
+      }
+    ]
+  },
+  "transport_cases": [
     {
-      "id": "get-info-request",
-      "kind": "request",
-      "opcode": 1,
-      "sequence": 1,
-      "status": null,
-      "hex": "030101"
+      "id": "att-value-maximum",
+      "length": 495,
+      "accepted": true,
+      "hex": "ababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab",
+      "expected_error": null
     },
     {
-      "id": "get-info-response",
-      "kind": "response",
-      "opcode": 1,
-      "sequence": 1,
-      "status": "OK",
-      "hex": "03010100030003312e3001"
+      "id": "att-value-overflow",
+      "length": 496,
+      "accepted": false,
+      "hex": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "expected_error": "ATT_VALUE_TOO_LONG"
+    }
+  ],
+  "transaction_cases": [
+    {
+      "id": "get-info-at-mtu23",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 23,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0101",
+          "expect": "response:OK"
+        },
+        {
+          "action": "confirm_response"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "get-status-request",
-      "kind": "request",
-      "opcode": 2,
-      "sequence": 2,
-      "status": null,
-      "hex": "030202"
+      "id": "full-profile-at-mtu497",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 497,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0202",
+          "expect": "response:MTU_TOO_SMALL"
+        },
+        {
+          "action": "confirm_response"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "get-status-response",
-      "kind": "response",
-      "opcode": 2,
-      "sequence": 2,
-      "status": "OK",
-      "hex": "0302020002000000000101000000"
+      "id": "full-profile-at-mtu498",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0202",
+          "expect": "response:OK"
+        },
+        {
+          "action": "confirm_response"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "set-credentials-request",
-      "kind": "request",
-      "opcode": 5,
-      "sequence": 3,
-      "status": null,
-      "hex": "030503034d54420870617373776f72640201"
+      "id": "unencrypted-precedence",
+      "initial": {
+        "connected": true,
+        "encrypted": false,
+        "mtu": 23,
+        "subscribed": false,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "01",
+          "expect": "att:INSUFFICIENT_ENCRYPTION"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "set-credentials-accepted",
-      "kind": "response",
-      "opcode": 5,
-      "sequence": 3,
-      "status": "ACCEPTED",
-      "hex": "03050301"
+      "id": "unsubscribed-precedence",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": false,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0101",
+          "expect": "att:CCCD_IMPROPERLY_CONFIGURED"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "connect-request",
-      "kind": "request",
-      "opcode": 6,
-      "sequence": 4,
-      "status": null,
-      "hex": "030604"
+      "id": "pending-response-write",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0201",
+          "expect": "response:OK"
+        },
+        {
+          "action": "write",
+          "hex": "0102",
+          "expect": "att:PROCEDURE_ALREADY_IN_PROGRESS"
+        },
+        {
+          "action": "confirm_response"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "connect-busy",
-      "kind": "response",
-      "opcode": 6,
-      "sequence": 4,
-      "status": "BUSY",
-      "hex": "03060402"
+      "id": "pending-event-write",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": false,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "030e",
+          "expect": "response:ACCEPTED"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "status",
+          "hex": "f001030000",
+          "final_for": null
+        },
+        {
+          "action": "write",
+          "hex": "010f",
+          "expect": "att:PROCEDURE_ALREADY_IN_PROGRESS"
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "status",
+          "hex": "f001020000",
+          "final_for": 14
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "complete_scan",
+          "hex": "f0020e0000"
+        },
+        {
+          "action": "confirm_completion"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "connect-accepted",
-      "kind": "response",
-      "opcode": 6,
-      "sequence": 4,
-      "status": "ACCEPTED",
-      "hex": "03060401"
+      "id": "invalid-header-at-att",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0100",
+          "expect": "att:VALUE_NOT_ALLOWED"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "start-scan-request",
-      "kind": "request",
-      "opcode": 3,
-      "sequence": 5,
-      "status": null,
-      "hex": "03030500"
+      "id": "reserved-request-opcodes-at-att",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0001",
+          "expect": "att:VALUE_NOT_ALLOWED"
+        },
+        {
+          "action": "write",
+          "hex": "7001",
+          "expect": "att:VALUE_NOT_ALLOWED"
+        },
+        {
+          "action": "write",
+          "hex": "8001",
+          "expect": "att:VALUE_NOT_ALLOWED"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "start-scan-accepted",
-      "kind": "response",
-      "opcode": 3,
-      "sequence": 5,
-      "status": "ACCEPTED",
-      "hex": "03030501"
+      "id": "att-length-at-mtu23",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 23,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "010100000000000000000000000000000000000000",
+          "expect": "att:INVALID_ATTRIBUTE_VALUE_LENGTH"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "scan-page-request",
-      "kind": "request",
-      "opcode": 4,
-      "sequence": 6,
-      "status": null,
-      "hex": "0304060100000000"
+      "id": "active-operation-queries",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0303",
+          "expect": "response:ACCEPTED"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "write",
+          "hex": "0407",
+          "expect": "response:INVALID_ARGUMENT"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "write",
+          "hex": "0104",
+          "expect": "response:OK"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "write",
+          "hex": "0205",
+          "expect": "response:OK"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "write",
+          "hex": "0103",
+          "expect": "response:BUSY"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "write",
+          "hex": "0506",
+          "expect": "response:BUSY"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "status",
+          "hex": "f001030000",
+          "final_for": null
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "status",
+          "hex": "f001020000",
+          "final_for": 3
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "complete_scan",
+          "hex": "f002030000"
+        },
+        {
+          "action": "confirm_completion"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "scan-page-response",
-      "kind": "response",
-      "opcode": 4,
-      "sequence": 6,
-      "status": "OK",
-      "hex": "0304060001000000000001024d5402d6"
+      "id": "status-before-operation-completion",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": false,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0404024d540870617373776f726402",
+          "expect": "response:ACCEPTED"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "status",
+          "hex": "f0010200024d54",
+          "final_for": 4
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "complete_operation",
+          "hex": "f003040400"
+        },
+        {
+          "action": "confirm_completion"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "disconnect-request",
-      "kind": "request",
-      "opcode": 7,
-      "sequence": 7,
-      "status": null,
-      "hex": "030707"
+      "id": "connect-success-postcondition",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "050a",
+          "expect": "response:ACCEPTED"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "status",
+          "hex": "f0010500024d54",
+          "final_for": 10
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "complete_operation",
+          "hex": "f0030a0500"
+        },
+        {
+          "action": "confirm_completion"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "disconnect-accepted",
-      "kind": "response",
-      "opcode": 7,
-      "sequence": 7,
-      "status": "ACCEPTED",
-      "hex": "03070701"
+      "id": "disconnect-success-postcondition",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "060b",
+          "expect": "response:ACCEPTED"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "status",
+          "hex": "f0010200024d54",
+          "final_for": 11
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "complete_operation",
+          "hex": "f0030b0600"
+        },
+        {
+          "action": "confirm_completion"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "forget-request",
-      "kind": "request",
-      "opcode": 8,
-      "sequence": 8,
-      "status": null,
-      "hex": "030808"
+      "id": "forget-success-postcondition",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "070c",
+          "expect": "response:ACCEPTED"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "status",
+          "hex": "f001020000",
+          "final_for": 12
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "complete_operation",
+          "hex": "f0030c0700"
+        },
+        {
+          "action": "confirm_completion"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "forget-accepted",
-      "kind": "response",
-      "opcode": 8,
-      "sequence": 8,
-      "status": "ACCEPTED",
-      "hex": "03080801"
+      "id": "connect-success-invalid-postcondition",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "050d",
+          "expect": "response:ACCEPTED"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "status",
+          "hex": "f0010200024d54",
+          "final_for": 13
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "complete_operation",
+          "hex": "f0030d0500"
+        }
+      ],
+      "expected_error": "STATE"
     },
     {
-      "id": "set-auto-connect-request",
-      "kind": "request",
-      "opcode": 9,
-      "sequence": 9,
-      "status": null,
-      "hex": "03090901"
+      "id": "completion-before-status-confirmation",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": false,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0404024d540870617373776f726402",
+          "expect": "response:ACCEPTED"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "status",
+          "hex": "f0010200024d54",
+          "final_for": 4
+        },
+        {
+          "action": "complete_operation",
+          "hex": "f003040400"
+        }
+      ],
+      "expected_error": "SEQUENCE"
     },
     {
-      "id": "set-auto-connect-accepted",
-      "kind": "response",
-      "opcode": 9,
-      "sequence": 9,
-      "status": "ACCEPTED",
-      "hex": "03090901"
+      "id": "scan-terminal-event",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0308",
+          "expect": "response:ACCEPTED"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "status",
+          "hex": "f0010300024d54",
+          "final_for": null
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "status",
+          "hex": "f0010200024d54",
+          "final_for": 8
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "complete_scan",
+          "hex": "f002080000"
+        },
+        {
+          "action": "confirm_completion"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "wifi-status-event",
-      "kind": "event",
-      "opcode": 240,
-      "sequence": 0,
-      "status": "OK",
-      "hex": "03f0000006000000000101000000"
+      "id": "disconnect-no-replay",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0505",
+          "expect": "response:ACCEPTED"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "reconnect",
+          "encrypted": true,
+          "mtu": 498,
+          "subscribed": true
+        },
+        {
+          "action": "write",
+          "hex": "0209",
+          "expect": "response:OK"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "status",
+          "hex": "f0010500024d54",
+          "final_for": null
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "finish_detached_operation"
+        }
+      ],
+      "expected_error": null
     },
     {
-      "id": "unknown-operation",
-      "kind": "response",
-      "opcode": 127,
-      "sequence": 9,
-      "status": "UNSUPPORTED",
-      "hex": "037f0908"
+      "id": "detached-completion-rejected",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0505",
+          "expect": "response:ACCEPTED"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "reconnect",
+          "encrypted": true,
+          "mtu": 498,
+          "subscribed": true
+        },
+        {
+          "action": "complete_operation",
+          "hex": "f003050500"
+        }
+      ],
+      "expected_error": "SEQUENCE"
+    },
+    {
+      "id": "completion-before-response-confirmation",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0505",
+          "expect": "response:ACCEPTED"
+        },
+        {
+          "action": "complete_operation",
+          "hex": "f003050500"
+        }
+      ],
+      "expected_error": "SEQUENCE"
+    },
+    {
+      "id": "orphan-completion",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "complete_operation",
+          "hex": "f003010500"
+        }
+      ],
+      "expected_error": "SEQUENCE"
+    },
+    {
+      "id": "duplicate-completion",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0606",
+          "expect": "response:ACCEPTED"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "complete_operation",
+          "hex": "f003060600"
+        },
+        {
+          "action": "confirm_completion"
+        },
+        {
+          "action": "complete_operation",
+          "hex": "f003060600"
+        }
+      ],
+      "expected_error": "SEQUENCE"
+    },
+    {
+      "id": "service-unavailable",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": false
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0402",
+          "expect": "response:INVALID_ARGUMENT"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "write",
+          "hex": "0303",
+          "expect": "response:UNAVAILABLE"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "write",
+          "hex": "0404024d540870617373776f726402",
+          "expect": "response:UNAVAILABLE"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "write",
+          "hex": "0505",
+          "expect": "response:UNAVAILABLE"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "write",
+          "hex": "0606",
+          "expect": "response:UNAVAILABLE"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "write",
+          "hex": "0707",
+          "expect": "response:UNAVAILABLE"
+        },
+        {
+          "action": "confirm_response"
+        }
+      ],
+      "expected_error": null
+    },
+    {
+      "id": "get-info-bypasses-service-admission",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 23,
+        "subscribed": true,
+        "profile_present": false,
+        "service_available": false
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0101",
+          "expect": "response:OK"
+        },
+        {
+          "action": "confirm_response"
+        }
+      ],
+      "expected_error": null
+    },
+    {
+      "id": "get-status-bypasses-service-admission",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": false,
+        "service_available": false
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0202",
+          "expect": "response:OK"
+        },
+        {
+          "action": "confirm_response"
+        }
+      ],
+      "expected_error": null
+    },
+    {
+      "id": "connect-without-profile",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": false,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0505",
+          "expect": "response:NOT_FOUND"
+        },
+        {
+          "action": "confirm_response"
+        }
+      ],
+      "expected_error": null
+    },
+    {
+      "id": "forget-without-profile",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 498,
+        "subscribed": true,
+        "profile_present": false,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "0707",
+          "expect": "response:NOT_FOUND"
+        },
+        {
+          "action": "confirm_response"
+        }
+      ],
+      "expected_error": null
+    },
+    {
+      "id": "application-precedence",
+      "initial": {
+        "connected": true,
+        "encrypted": true,
+        "mtu": 23,
+        "subscribed": true,
+        "profile_present": true,
+        "service_available": true
+      },
+      "steps": [
+        {
+          "action": "write",
+          "hex": "7f01",
+          "expect": "response:UNSUPPORTED"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "write",
+          "hex": "010200",
+          "expect": "response:INVALID_ARGUMENT"
+        },
+        {
+          "action": "confirm_response"
+        },
+        {
+          "action": "write",
+          "hex": "020300",
+          "expect": "response:MTU_TOO_SMALL"
+        },
+        {
+          "action": "confirm_response"
+        }
+      ],
+      "expected_error": null
     }
   ]
 }
