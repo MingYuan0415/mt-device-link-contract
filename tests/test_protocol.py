@@ -114,8 +114,13 @@ class ProtocolSourceTest(unittest.TestCase):
             *(name for values in self.protocol["enums"].values()
               for name in values),
         }
+        semantic_enum_names = set(
+            self.protocol["wire_rules"]["scan_result"]["representable_security"]
+        )
         for name in registry_names:
             with self.subTest(registry=name):
+                if name in semantic_enum_names:
+                    continue
                 self.assertNotIn(f'"{name}"', checker)
                 self.assertNotIn(f"'{name}'", checker)
 
@@ -192,20 +197,7 @@ class SecurityAndTransportTest(unittest.TestCase):
                 "encryption_key_bytes", 15
             ),
             lambda p: p["protocol"]["security"].__setitem__(
-                "bond_replacement_candidate", "persistent"
-            ),
-            lambda p: p["protocol"]["security"][
-                "bond_replacement_commit_requires"
-            ].remove("candidate_persisted"),
-            lambda p: p["protocol"]["security"].__setitem__(
-                "bond_replacement_candidate_counts_toward_persistent_limit",
-                True,
-            ),
-            lambda p: p["protocol"]["security"].__setitem__(
-                "bond_replacement_failure_retains_old", False
-            ),
-            lambda p: p["protocol"]["security"].__setitem__(
-                "bond_replacement_precommit_power_loss_retains_old", False
+                "bond_replacement", "remote_transaction"
             ),
             lambda p: p["protocol"]["gatt"]["characteristics"][
                 "command_rx"
@@ -215,11 +207,48 @@ class SecurityAndTransportTest(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 self.assert_mutation_fails(mutation, "SECURITY")
 
+    def test_removed_bond_transaction_fields_are_rejected(self) -> None:
+        removed = {
+            "bond_replacement_commit": "after_all_requirements",
+            "bond_replacement_commit_requires": [],
+            "bond_replacement_candidate": "temporary",
+            "bond_replacement_candidate_counts_toward_persistent_limit": False,
+            "bond_replacement_failure_retains_old": True,
+            "bond_replacement_precommit_power_loss_retains_old": True,
+        }
+        for key, value in removed.items():
+            candidate = copy.deepcopy(self.protocol)
+            candidate["protocol"]["security"][key] = value
+            with self.subTest(key=key):
+                self.assertEqual(
+                    contract_error_code(validate_protocol, candidate),
+                    "UNKNOWN_FIELD",
+                )
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["protocol"]["transport"]["l2cap_pdu_bytes"] = 502
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "UNKNOWN_FIELD")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["protocol"]["att_errors"][
+            "cccd_improperly_configured"
+        ] = 0xfd
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "UNKNOWN_FIELD")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["protocol"]["att_errors"][
+            "procedure_already_in_progress"
+        ] = 0xfe
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "UNKNOWN_FIELD")
+
     def test_mtu_math_and_att_boundaries(self) -> None:
         transport = self.protocol["protocol"]["transport"]
         self.assertEqual(transport["required_att_mtu"], 498)
         self.assertEqual(transport["maximum_att_value_bytes"], 495)
-        self.assertEqual(transport["l2cap_pdu_bytes"], 502)
+        self.assertNotIn("l2cap_pdu_bytes", transport)
         validate_att_value_length(self.protocol, 495)
         self.assertEqual(
             contract_error_code(validate_att_value_length,
@@ -271,6 +300,37 @@ class SecurityAndTransportTest(unittest.TestCase):
                 self.assertEqual(
                     contract_error_code(validate_protocol, candidate), expected
                 )
+
+    def test_nimble_security_gate_and_profile_att_values(self) -> None:
+        errors = self.protocol["protocol"]["att_errors"]
+        self.assertEqual(errors["security_gate_error"],
+                         "insufficient_authentication")
+        self.assertEqual(errors["profile_cccd_not_enabled"], 0xfd)
+        self.assertEqual(errors["profile_tx_indication_pending"], 0xfe)
+        self.assertEqual(errors["gatt_precedence"][0], "security_gate")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["protocol"]["att_errors"][
+            "security_gate_error"
+        ] = "insufficient_encryption"
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "SECURITY")
+
+    def test_scan_rssi_range_and_timeout_failures(self) -> None:
+        field = self.protocol["types"]["scan_network"]["fields"][-1]
+        self.assertEqual((field["min"], field["max"]), (-127, 127))
+        matrix = self.protocol["wire_rules"]["operation_result"][
+            "failure_matrix"
+        ]
+        for operation in ("SET_CREDENTIALS", "DISCONNECT", "FORGET"):
+            with self.subTest(operation=operation):
+                self.assertIn("TIMEOUT", matrix[operation])
+
+    def test_scan_rssi_range_is_normative(self) -> None:
+        candidate = copy.deepcopy(self.protocol)
+        candidate["types"]["scan_network"]["fields"][-1]["max"] = 0
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "VALUE")
 
     def test_field_rule_and_low_mtu_links_are_enforced(self) -> None:
         mutations = [
@@ -361,6 +421,7 @@ class ContractBoundaryTest(unittest.TestCase):
         self.assertNotIn("scan", rules)
         self.assertNotIn("failure_rollback_required",
                          rules["operation_result"])
+        self.assertIn("delivery", rules["wifi_status"])
         self.assertNotIn("intermediate_updates", rules["wifi_status"])
 
     def test_policy_fields_cannot_be_added_to_schema(self) -> None:
@@ -384,10 +445,69 @@ class ContractBoundaryTest(unittest.TestCase):
                     "UNKNOWN_FIELD",
                 )
 
+    def test_status_and_scan_policies_are_not_weakened(self) -> None:
+        candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["wifi_status"]["delivery"][
+            "ordinary_updates"
+        ] = "all"
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "OPERATION")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["wifi_status"]["delivery"][
+            "terminal_event_priority"
+        ] = False
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "OPERATION")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["wifi_status"]["delivery"][
+            "ordinary_updates_while_terminal_pending"
+        ] = "send"
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "OPERATION")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["scan_result"]["count_after_filter"] = False
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "VALUE")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["scan_result"]["representable_security"][
+            "PERSONAL"
+        ] = ["WIFI_AUTH_WPA2_PSK"]
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "VALUE")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["enums"]["wifi_security"]["WEP"] = 3
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "ENUM")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["enums"]["wifi_security"] = {"WEP": 1, "PERSONAL": 2}
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "ENUM")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["enums"]["wifi_security"] = {"OPEN": 2, "PERSONAL": 1}
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "ENUM")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["operation_lifecycle"][
+            "finite_termination_required"
+        ] = False
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "OPERATION")
+
     def test_operation_lifecycle_regressions_are_rejected(self) -> None:
         mutations = [
             lambda p: p["wire_rules"]["operation_lifecycle"].__setitem__(
                 "terminal_event_replay", True
+            ),
+            lambda p: p["wire_rules"]["operation_lifecycle"].__setitem__(
+                "accepted_response_disconnect_policy", "replay"
             ),
             lambda p: p["wire_rules"]["operation_lifecycle"].__setitem__(
                 "disconnect_clears_record", True
@@ -591,6 +711,20 @@ class VectorTest(unittest.TestCase):
 
         candidate = copy.deepcopy(self.vectors)
         scenario = candidate["operation_cases"][0]
+        status_index = next(
+            index for index, step in enumerate(scenario["steps"])
+            if step["action"] == "emit_status"
+        )
+        scenario["steps"].insert(status_index, {
+            "action": "queue_ordinary_status", "snapshot": "IDLE",
+        })
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = candidate["operation_cases"][0]
         terminal = next(step for step in scenario["steps"]
                         if step["action"] == "emit_terminal")
         terminal["operation_id"] = 2
@@ -633,6 +767,12 @@ class VectorTest(unittest.TestCase):
         )
 
         candidate = copy.deepcopy(self.vectors)
+        scan_case = next(item for item in candidate["wifi_cases"]
+                         if item["case"] == "scan_filtering")
+        scan_case["expect"]["filtered_ssids"].reverse()
+        validate_vectors(self.protocol, candidate)
+
+        candidate = copy.deepcopy(self.vectors)
         scenario = next(
             item for item in candidate["operation_cases"]
             if item["id"] == "disconnect-completion-recovery-and-ack"
@@ -669,6 +809,88 @@ class VectorTest(unittest.TestCase):
         self.assertEqual(
             contract_error_code(validate_vectors, self.protocol, candidate),
             "COVERAGE",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(item for item in candidate["operation_cases"]
+                        if item["id"] == "ordinary-status-coalesce-and-disconnect")
+        scenario["steps"][2]["snapshot"] = "IDLE"
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+
+    def test_scan_filter_count_and_rssi_boundaries_are_covered(self) -> None:
+        valid_ids = {item["id"] for item in self.vectors["messages"]["valid"]}
+        invalid_ids = {
+            item["id"] for item in self.vectors["messages"]["invalid"]
+        }
+        self.assertIn("scan-rssi-lower-bound", valid_ids)
+        self.assertIn("scan-rssi-below-lower-bound", invalid_ids)
+
+        candidate = copy.deepcopy(self.vectors)
+        scan_case = next(
+            item for item in candidate["wifi_cases"]
+            if item["case"] == "scan_filtering_under_limit"
+        )
+        scan_case["expect"]["count"] = 3
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+    def test_accepted_response_disconnect_recovery_requires_query(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] == "accepted-response-disconnect-recovery"
+        )
+        query_index = next(
+            index for index, step in enumerate(scenario["steps"])
+            if step["action"] == "query"
+        )
+        scenario["steps"].insert(query_index, {
+            "action": "ack", "operation_id": 50, "expect": "OK",
+        })
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+    def test_terminal_priority_defers_ordinary_status_emission(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] == "ordinary-status-deferred-by-terminal"
+        )
+        terminal_index = next(
+            index for index, step in enumerate(scenario["steps"])
+            if step["action"] == "emit_terminal"
+        )
+        scenario["steps"].insert(terminal_index, {
+            "action": "emit_ordinary_status", "snapshot": "IDLE",
+        })
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] == "final-status-ordinary-deferred"
+        )
+        terminal_index = next(
+            index for index, step in enumerate(scenario["steps"])
+            if step["action"] == "emit_terminal"
+        )
+        scenario["steps"].insert(terminal_index, {
+            "action": "emit_ordinary_status", "snapshot": "ERROR",
+        })
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
         )
 
 

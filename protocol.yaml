@@ -55,16 +55,7 @@ protocol:
     pairing_window_duration: implementation_defined
     unbonded_pairing_requires_window: true
     bonded_reconnect_requires_window: false
-    bond_replacement: physical_confirmation
-    bond_replacement_commit: after_all_requirements
-    bond_replacement_commit_requires:
-      - numeric_comparison_completed
-      - encryption_key_available
-      - candidate_persisted
-    bond_replacement_candidate: temporary
-    bond_replacement_candidate_counts_toward_persistent_limit: false
-    bond_replacement_failure_retains_old: true
-    bond_replacement_precommit_power_loss_retains_old: true
+    bond_replacement: local_clear_then_pair
     oob: false
     application_encryption: false
 
@@ -76,12 +67,6 @@ protocol:
     att_value_header_bytes: 3
     maximum_att_value_bytes: 495
     future_single_att_value_capacity: true
-    l2cap_sdu_bytes: 498
-    l2cap_basic_header_bytes: 4
-    l2cap_pdu_bytes: 502
-    link_layer_payload_bytes: 251
-    link_layer_payloads_for_full_l2cap_pdu: 2
-    link_layer_math_requires_dle: true
     fragmented_messages: false
     single_connection: true
     request_header: [opcode, request_id]
@@ -124,13 +109,13 @@ protocol:
   att_errors:
     insufficient_authentication: 0x05
     insufficient_encryption: 0x0f
+    security_gate_error: insufficient_authentication
     invalid_attribute_value_length: 0x0d
     value_not_allowed: 0x13
-    cccd_improperly_configured: 0xfd
-    procedure_already_in_progress: 0xfe
+    profile_cccd_not_enabled: 0xfd
+    profile_tx_indication_pending: 0xfe
     gatt_precedence:
-      - encrypted_link
-      - authenticated_link
+      - security_gate
       - att_value_length
       - header_values
       - server_tx_subscription
@@ -216,7 +201,7 @@ types:
       - name: rssi_dbm
         wire: i8
         min: -127
-        max: 0
+        max: 127
 
 status_codes:
   OK: 0
@@ -466,6 +451,14 @@ wire_rules:
     profile_required_states: [CONNECTING, CONNECTED]
     profile_required_failures: [AUTHENTICATION, AP_NOT_FOUND, TIMEOUT, LINK_LOST]
     emitted_when_snapshot_changes: true
+    delivery:
+      ordinary_updates: latest_only
+      duplicate_updates: coalesce
+      pending_updates_on_disconnect: discard
+      authoritative_query: GET_STATUS
+      final_update_latched: true
+      terminal_event_priority: true
+      ordinary_updates_while_terminal_pending: defer
 
   scan_result:
     scan_operation: SCAN
@@ -473,15 +466,26 @@ wire_rules:
     failure_values: [TIMEOUT, RADIO, INTERNAL]
     failure_has_empty_results: true
     maximum_records: 5
+    representable_security:
+      OPEN: [WIFI_AUTH_OPEN]
+      PERSONAL:
+        - WIFI_AUTH_WPA_PSK
+        - WIFI_AUTH_WPA2_PSK
+        - WIFI_AUTH_WPA_WPA2_PSK
+        - WIFI_AUTH_WPA3_PSK
+        - WIFI_AUTH_WPA2_WPA3_PSK
+    unsupported_security_policy: filter
+    empty_ssid_policy: filter
+    count_after_filter: true
 
   operation_result:
     success_failure: NONE
     failure_matrix:
       SCAN: [NONE, TIMEOUT, RADIO, INTERNAL]
-      SET_CREDENTIALS: [NONE, STORAGE, INTERNAL]
+      SET_CREDENTIALS: [NONE, STORAGE, TIMEOUT, INTERNAL]
       CONNECT: [NONE, AUTHENTICATION, AP_NOT_FOUND, TIMEOUT, LINK_LOST, RADIO, STORAGE, INTERNAL]
-      DISCONNECT: [NONE, RADIO, INTERNAL]
-      FORGET: [NONE, STORAGE, RADIO, INTERNAL]
+      DISCONNECT: [NONE, RADIO, TIMEOUT, INTERNAL]
+      FORGET: [NONE, STORAGE, RADIO, TIMEOUT, INTERNAL]
     success_postconditions:
       SET_CREDENTIALS: profile_available_without_connecting
       CONNECT: connected_with_ipv4
@@ -512,6 +516,13 @@ wire_rules:
         immediate_status: ACCEPTED
         creates_operation: true
         observable_result: success_profile_retained
+      connect_authmode_mismatch:
+        command: CONNECT
+        condition: profile_authmode_mismatch
+        immediate_status: ACCEPTED
+        creates_operation: true
+        observable_result: terminal_authentication
+        terminal_failure: AUTHENTICATION
 
   operation_record:
     active_phase: ACTIVE
@@ -533,7 +544,11 @@ wire_rules:
     operation_id_scope: boot
     operation_id_exhausted_status: INTERNAL
     must_reach_terminal: true
+    finite_termination_required: true
+    termination_timeout: implementation_defined_finite
+    timeout_failure: TIMEOUT
     terminal_event_generated_once: true
+    accepted_response_disconnect_policy: discard_and_query
     new_operation_while_active_status: BUSY
     new_operation_while_terminal_status: BUSY
     get_operation_no_record_status: NOT_FOUND

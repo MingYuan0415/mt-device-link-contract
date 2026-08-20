@@ -435,12 +435,7 @@ def _validate_security(value: Any) -> dict[str, Any]:
         "io_capability", "association_model", "encryption_key_bytes",
         "pairing_window", "pairing_window_duration",
         "unbonded_pairing_requires_window",
-        "bonded_reconnect_requires_window", "bond_replacement",
-        "bond_replacement_commit", "bond_replacement_commit_requires",
-        "bond_replacement_candidate",
-        "bond_replacement_candidate_counts_toward_persistent_limit",
-        "bond_replacement_failure_retains_old",
-        "bond_replacement_precommit_power_loss_retains_old", "oob",
+        "bonded_reconnect_requires_window", "bond_replacement", "oob",
         "application_encryption",
     }, set(), "protocol.security")
     require(_string(security["transport"], "security.transport") ==
@@ -462,8 +457,8 @@ def _validate_security(value: Any) -> dict[str, Any]:
                      "security.encryption_key_bytes", 7, 16) == 16,
             "SECURITY", "the encryption key must be 16 bytes")
     require(security["pairing_window"] == "physical_confirmation" and
-            security["bond_replacement"] == "physical_confirmation",
-            "SECURITY", "pairing and replacement require physical confirmation")
+            security["bond_replacement"] == "local_clear_then_pair",
+            "SECURITY", "replacement requires local clear before pairing")
     _string(security["pairing_window_duration"],
             "security.pairing_window_duration")
     require(_boolean(security["unbonded_pairing_requires_window"],
@@ -472,35 +467,6 @@ def _validate_security(value: Any) -> dict[str, Any]:
     require(not _boolean(security["bonded_reconnect_requires_window"],
                          "security.bonded_reconnect_requires_window"),
             "SECURITY", "bonded reconnect must work outside the window")
-    require(security["bond_replacement_commit"] ==
-            "after_all_requirements", "SECURITY",
-            "old bond must survive until all replacement requirements pass")
-    require(_string_list(
-        security["bond_replacement_commit_requires"],
-        "security.bond_replacement_commit_requires",
-    ) == [
-        "numeric_comparison_completed",
-        "encryption_key_available",
-        "candidate_persisted",
-    ], "SECURITY", "bond replacement commit requirements are incomplete")
-    require(security["bond_replacement_candidate"] == "temporary" and
-            not _boolean(
-                security[
-                    "bond_replacement_candidate_counts_toward_persistent_limit"
-                ],
-                "security."
-                "bond_replacement_candidate_counts_toward_persistent_limit",
-            ) and
-            _boolean(security["bond_replacement_failure_retains_old"],
-                     "security.bond_replacement_failure_retains_old") and
-            _boolean(
-                security[
-                    "bond_replacement_precommit_power_loss_retains_old"
-                ],
-                "security."
-                "bond_replacement_precommit_power_loss_retains_old",
-            ),
-            "SECURITY", "bond replacement must be transactional")
     require(not _boolean(security["oob"], "security.oob") and
             not _boolean(security["application_encryption"],
                          "security.application_encryption"),
@@ -512,10 +478,7 @@ def _validate_transport(value: Any) -> dict[str, Any]:
     keys = {
         "minimum_att_mtu", "preferred_att_mtu", "required_att_mtu",
         "att_pdu_bytes", "att_value_header_bytes", "maximum_att_value_bytes",
-        "future_single_att_value_capacity", "l2cap_sdu_bytes",
-        "l2cap_basic_header_bytes", "l2cap_pdu_bytes",
-        "link_layer_payload_bytes", "link_layer_payloads_for_full_l2cap_pdu",
-        "link_layer_math_requires_dle", "fragmented_messages",
+        "future_single_att_value_capacity", "fragmented_messages",
         "single_connection", "request_header", "response_header",
         "event_header", "request_header_bytes", "response_header_bytes",
         "event_header_bytes", "event_marker", "response_opcode_mask",
@@ -540,10 +503,7 @@ def _validate_transport(value: Any) -> dict[str, Any]:
         for name in (
             "minimum_att_mtu", "preferred_att_mtu", "required_att_mtu",
             "att_pdu_bytes", "att_value_header_bytes",
-            "maximum_att_value_bytes", "l2cap_sdu_bytes",
-            "l2cap_basic_header_bytes", "l2cap_pdu_bytes",
-            "link_layer_payload_bytes",
-            "link_layer_payloads_for_full_l2cap_pdu",
+            "maximum_att_value_bytes",
             "request_header_bytes", "response_header_bytes",
             "event_header_bytes", "event_marker", "response_opcode_mask",
             "application_error_opcode",
@@ -558,22 +518,13 @@ def _validate_transport(value: Any) -> dict[str, Any]:
     require(numeric["maximum_att_value_bytes"] ==
             numeric["att_pdu_bytes"] - numeric["att_value_header_bytes"],
             "TRANSPORT_MATH", "ATT value capacity is inconsistent")
-    require(numeric["l2cap_sdu_bytes"] == numeric["att_pdu_bytes"],
-            "TRANSPORT_MATH", "ATT PDU must equal L2CAP SDU")
-    require(numeric["l2cap_pdu_bytes"] == numeric["l2cap_sdu_bytes"] +
-            numeric["l2cap_basic_header_bytes"], "TRANSPORT_MATH",
-            "L2CAP PDU arithmetic is inconsistent")
-    require(numeric["l2cap_pdu_bytes"] ==
-            numeric["link_layer_payload_bytes"] *
-            numeric["link_layer_payloads_for_full_l2cap_pdu"],
-            "TRANSPORT_MATH", "Link Layer payload arithmetic is inconsistent")
     require(numeric["application_error_opcode"] ==
             numeric["response_opcode_mask"] == 0x80, "OPERATION",
             "application error opcode must be the reserved response for opcode zero")
     require(numeric["application_error_opcode"] != numeric["event_marker"],
             "DUPLICATE_ID", "application error opcode collides with event marker")
     for key in (
-        "future_single_att_value_capacity", "link_layer_math_requires_dle",
+        "future_single_att_value_capacity",
         "single_connection", "request_opcode_msb_must_be_zero",
         "operation_id_zero_reserved", "server_tx_subscription_required",
         "one_outstanding_indication",
@@ -662,8 +613,9 @@ def _validate_transport(value: Any) -> dict[str, Any]:
 def _validate_att_errors(value: Any) -> dict[str, Any]:
     errors = _mapping(value, {
         "insufficient_authentication", "insufficient_encryption",
+        "security_gate_error",
         "invalid_attribute_value_length", "value_not_allowed",
-        "cccd_improperly_configured", "procedure_already_in_progress",
+        "profile_cccd_not_enabled", "profile_tx_indication_pending",
         "gatt_precedence", "application_precedence",
     }, set(), "protocol.att_errors")
     fixed = {
@@ -671,8 +623,8 @@ def _validate_att_errors(value: Any) -> dict[str, Any]:
         "insufficient_encryption": 0x0f,
         "invalid_attribute_value_length": 0x0d,
         "value_not_allowed": 0x13,
-        "cccd_improperly_configured": 0xfd,
-        "procedure_already_in_progress": 0xfe,
+        "profile_cccd_not_enabled": 0xfd,
+        "profile_tx_indication_pending": 0xfe,
     }
     for name, expected in fixed.items():
         require(_integer(errors[name], f"att_errors.{name}", 0, 255) ==
@@ -680,10 +632,12 @@ def _validate_att_errors(value: Any) -> dict[str, Any]:
     error_values = [errors[name] for name in fixed]
     require(len(error_values) == len(set(error_values)), "DUPLICATE_ID",
             "ATT error values must be unique")
+    require(errors["security_gate_error"] == "insufficient_authentication",
+            "SECURITY", "NimBLE SC-only security gate must use 0x05")
     gatt_precedence = _string_list(errors["gatt_precedence"],
                                    "att_errors.gatt_precedence", True)
     require(gatt_precedence == [
-        "encrypted_link", "authenticated_link", "att_value_length",
+        "security_gate", "att_value_length",
         "header_values", "server_tx_subscription", "unconfirmed_server_tx",
     ], "SECURITY", "GATT precedence is incomplete or reordered")
     application_precedence = _string_list(
@@ -1025,6 +979,7 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
         "connected_means_ipv4", "profile_ssid_empty_means_no_profile",
         "state_matrix", "profile_required_states",
         "profile_required_failures", "emitted_when_snapshot_changes",
+        "delivery",
     }, set(), "wire_rules.wifi_status")
     for key in ("connected_means_ipv4",
                 "profile_ssid_empty_means_no_profile",
@@ -1044,11 +999,31 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
         enum_name = "wifi_state" if key.endswith("states") else "wifi_failure"
         require(all(item in enums[enum_name] for item in values), "ENUM",
                 f"wifi_status.{key} references an unknown value")
+    delivery = _mapping(wifi_status["delivery"], {
+        "ordinary_updates", "duplicate_updates",
+        "pending_updates_on_disconnect", "authoritative_query",
+        "final_update_latched", "terminal_event_priority",
+        "ordinary_updates_while_terminal_pending",
+    }, set(), "wire_rules.wifi_status.delivery")
+    status_queries = {item["name"] for item in protocol["commands"]
+                      if item.get("response_semantic") == "wifi_status"}
+    require(delivery["ordinary_updates"] == "latest_only" and
+            delivery["duplicate_updates"] == "coalesce" and
+            delivery["pending_updates_on_disconnect"] == "discard" and
+            delivery["authoritative_query"] in status_queries and
+            _boolean(delivery["final_update_latched"],
+                     "wifi_status.delivery.final_update_latched") and
+            _boolean(delivery["terminal_event_priority"],
+                     "wifi_status.delivery.terminal_event_priority") and
+            delivery["ordinary_updates_while_terminal_pending"] == "defer",
+            "OPERATION", "Wi-Fi status delivery policy is inconsistent")
 
     scan = _mapping(rules["scan_result"], {
         "scan_operation",
         "success_failure", "failure_values", "failure_has_empty_results",
-        "maximum_records",
+        "maximum_records", "representable_security",
+        "unsupported_security_policy", "empty_ssid_policy",
+        "count_after_filter",
     }, set(), "wire_rules.scan_result")
     require(scan["success_failure"] in enums["wifi_failure"], "ENUM",
             "scan success failure is unknown")
@@ -1067,6 +1042,23 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
             "scan result maximum differs from the declared limit")
     require(scan["scan_operation"] in enums["operation"], "ENUM",
             "scan operation is unknown")
+    security_names = list(enums["wifi_security"])
+    require(enums["wifi_security"] == {"OPEN": 1, "PERSONAL": 2}, "ENUM",
+            "v1 Wi-Fi security enum must be OPEN=1 and PERSONAL=2")
+    representable = _mapping(scan["representable_security"],
+                             set(security_names), set(),
+                             "scan_result.representable_security")
+    require(representable["OPEN"] == ["WIFI_AUTH_OPEN"] and
+            representable["PERSONAL"] == [
+                "WIFI_AUTH_WPA_PSK", "WIFI_AUTH_WPA2_PSK",
+                "WIFI_AUTH_WPA_WPA2_PSK", "WIFI_AUTH_WPA3_PSK",
+                "WIFI_AUTH_WPA2_WPA3_PSK",
+            ], "VALUE", "Wi-Fi security mapping differs from the v1 profile")
+    require(scan["unsupported_security_policy"] == "filter" and
+            scan["empty_ssid_policy"] == "filter" and
+            _boolean(scan["count_after_filter"],
+                     "scan_result.count_after_filter"),
+            "VALUE", "scan result filtering policy is inconsistent")
 
     operation = _mapping(rules["operation_result"], {
         "success_failure", "failure_matrix", "success_postconditions",
@@ -1112,12 +1104,13 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
     edge_cases = _mapping(operation["edge_cases"], {
         "set_credentials_while_connected", "connect_without_profile",
         "forget_without_profile", "disconnect_when_idle",
+        "connect_authmode_mismatch",
     }, set(), "operation_result.edge_cases")
     for name, raw_edge in edge_cases.items():
         edge = _mapping(raw_edge, {
             "command", "condition", "immediate_status", "creates_operation",
             "observable_result",
-        }, set(), f"operation_result.edge_cases.{name}")
+        }, {"terminal_failure"}, f"operation_result.edge_cases.{name}")
         command_name = _string(edge["command"],
                                f"operation_result.edge_cases.{name}.command")
         _string(edge["condition"],
@@ -1137,6 +1130,13 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
                 "OPERATION", f"{name} operation creation is inconsistent")
         _string(edge["observable_result"],
                 f"operation_result.edge_cases.{name}.observable_result")
+        if "terminal_failure" in edge:
+            terminal_failure = _string(
+                edge["terminal_failure"],
+                f"operation_result.edge_cases.{name}.terminal_failure",
+            )
+            require(terminal_failure in failure_matrix[command_name], "ENUM",
+                    f"{name} terminal failure is not allowed")
 
     record = _mapping(rules["operation_record"], {
         "active_phase", "succeeded_phase", "failed_phase",
@@ -1167,12 +1167,15 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
     lifecycle = _mapping(rules["operation_lifecycle"], {
         "accepted_commands", "accepted_response_field", "slot_capacity",
         "slot_scope", "operation_id_scope", "operation_id_exhausted_status",
-        "must_reach_terminal", "terminal_event_generated_once",
+        "must_reach_terminal", "finite_termination_required",
+        "termination_timeout", "timeout_failure",
+        "terminal_event_generated_once",
         "new_operation_while_active_status",
         "new_operation_while_terminal_status", "get_operation_no_record_status",
         "ack_active_status", "ack_before_terminal_event_status",
         "ack_missing_or_mismatch_status",
         "ack_terminal_clears_record", "disconnect_clears_record",
+        "accepted_response_disconnect_policy",
         "reconnect_query", "reconnect_status_query", "terminal_event_replay",
         "reboot_clears_record", "ack_requires_terminal_event_confirmation",
         "ack_clears_after_response_confirmation",
@@ -1192,6 +1195,9 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
             "new_operation_while_terminal_status",
             "operation_id_exhausted_status",
         )), "STATUS", f"{command_name} omits an operation lifecycle status")
+        require(lifecycle["timeout_failure"] in
+                rules["operation_result"]["failure_matrix"][command_name],
+                "OPERATION", f"{command_name} omits the timeout failure")
     require(set(enums["operation"]) == async_names and
             all(enums["operation"][name] == commands_by_name[name]["id"]
                 for name in async_names), "OPERATION",
@@ -1207,6 +1213,15 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
             lifecycle["slot_scope"] == "device" and
             lifecycle["operation_id_scope"] == "boot", "OPERATION",
             "operation slot scope is inconsistent")
+    require(_boolean(lifecycle["finite_termination_required"],
+                     "operation_lifecycle.finite_termination_required") and
+            lifecycle["termination_timeout"] ==
+            "implementation_defined_finite" and
+            lifecycle["timeout_failure"] in enums["wifi_failure"],
+            "OPERATION", "accepted operations require a finite timeout")
+    require(lifecycle["accepted_response_disconnect_policy"] ==
+            "discard_and_query", "OPERATION",
+            "unconfirmed accepted responses must recover by query")
     for key in (
         "new_operation_while_active_status",
         "new_operation_while_terminal_status", "get_operation_no_record_status",
@@ -1403,6 +1418,13 @@ def validate_protocol(protocol: dict[str, Any]) -> None:
         definition = _mapping(raw_type, {"fields"}, set(), f"types.{name}")
         _validate_fields(definition["fields"], enums, types,
                          f"types.{name}.fields")
+    scan_fields = types["scan_network"]["fields"]
+    rssi_fields = [field for field in scan_fields
+                   if field["name"] == "rssi_dbm"]
+    require(len(rssi_fields) == 1 and rssi_fields[0]["wire"] == "i8" and
+            rssi_fields[0]["min"] == -127 and
+            rssi_fields[0]["max"] == 127, "VALUE",
+            "scan RSSI must use the -127..127 i8 range")
 
     require(type(root["commands"]) is list and type(root["events"]) is list,
             "TYPE", "commands and events must be lists")
@@ -1772,10 +1794,9 @@ def _validate_routing_case(protocol: dict[str, Any], case: Any) -> str:
             f"{label} references an unknown observable condition")
     att_errors = protocol["protocol"]["att_errors"]
     gatt_failures = {
-        "encrypted_link": (not flags["encrypted"],
-                           "insufficient_encryption"),
-        "authenticated_link": (not flags["authenticated"],
-                                "insufficient_authentication"),
+        "security_gate": (not flags["encrypted"] or
+                           not flags["authenticated"],
+                           att_errors["security_gate_error"]),
         "att_value_length": (
             value_length > transport["maximum_att_value_bytes"],
             "invalid_attribute_value_length",
@@ -1789,9 +1810,9 @@ def _validate_routing_case(protocol: dict[str, Any], case: Any) -> str:
             "value_not_allowed",
         ),
         "server_tx_subscription": (not flags["subscription_enabled"],
-                                   "cccd_improperly_configured"),
+                                   "profile_cccd_not_enabled"),
         "unconfirmed_server_tx": (flags["indication_outstanding"],
-                                  "procedure_already_in_progress"),
+                                  "profile_tx_indication_pending"),
     }
     actual = ""
     feature = ""
@@ -1861,9 +1882,11 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
     lifecycle = rules["operation_lifecycle"]
     record_rules = rules["operation_record"]
     response_rules = rules["response"]
+    wifi_states = set(protocol["enums"]["wifi_state"])
     accepted = set(lifecycle["accepted_commands"])
     failure_matrix = rules["operation_result"]["failure_matrix"]
     success_failure = rules["operation_result"]["success_failure"]
+    timeout_failure = lifecycle["timeout_failure"]
     accepted_status = response_rules["asynchronous_success_status"]
     ok_status = response_rules["synchronous_success_status"]
     slot: dict[str, Any] | None = None
@@ -1875,6 +1898,7 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
     reconnected = False
     recovered_terminal = False
     reboot_cleared_record = False
+    ordinary_pending: str | None = None
     for index, raw_step in enumerate(steps):
         step_label = f"{label}.steps[{index}]"
         require(type(raw_step) is dict, "TYPE",
@@ -1919,7 +1943,7 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
                         "status_changed": False, "status_confirmed": False,
                         "terminal_event_emitted": False,
                         "terminal_event_confirmed": False,
-                        "terminal_recovery_required": False}
+                        "recovery_required": False}
                 pending_indication = "accepted_response"
             else:
                 require("operation_id" not in step, "OPERATION",
@@ -1960,18 +1984,75 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
                              if failure == success_failure else
                              record_rules["failed_phase"])
             slot["failure"] = failure
-            slot["terminal_recovery_required"] |= not connected
+            slot["recovery_required"] |= not connected
             if failure == success_failure:
                 features.add(f"succeeded:{slot['operation']}")
+            elif failure != timeout_failure:
+                features.add(f"failed:{slot['operation']}")
             slot["status_changed"] = _boolean(
                 step["status_changed"], f"{step_label}.status_changed"
             )
+            if slot["status_changed"]:
+                features.add("final_status_latched")
+                ordinary_pending = None
+            if failure == timeout_failure:
+                features.add(f"timeout:{slot['operation']}")
+            authmode_edges = [edge for edge in
+                              rules["operation_result"]["edge_cases"].values()
+                              if "terminal_failure" in edge]
+            if any(slot["operation"] == edge["command"] and
+                   failure == edge["terminal_failure"]
+                   for edge in authmode_edges):
+                features.add("connect_authentication_failure")
+        elif action == "queue_ordinary_status":
+            step = _mapping(raw_step, {"action", "snapshot"}, set(),
+                            step_label)
+            final_latched = (slot is not None and
+                             slot["phase"] != record_rules["active_phase"] and
+                             slot["status_changed"] and
+                             not slot["recovery_required"] and
+                             not slot["status_confirmed"])
+            require(connected and not final_latched,
+                    "EXPECTATION",
+                    f"{step_label} cannot queue an ordinary status now")
+            snapshot = _string(step["snapshot"], f"{step_label}.snapshot")
+            require(snapshot in wifi_states, "ENUM",
+                    f"{step_label} snapshot is not a Wi-Fi state")
+            if ordinary_pending == snapshot:
+                features.add("status_coalesced")
+            elif ordinary_pending is not None:
+                features.add("status_latest_replaced")
+            ordinary_pending = snapshot
+        elif action == "emit_ordinary_status":
+            step = _mapping(raw_step, {"action", "snapshot"}, set(),
+                            step_label)
+            snapshot = _string(step["snapshot"], f"{step_label}.snapshot")
+            require(snapshot in wifi_states, "ENUM",
+                    f"{step_label} snapshot is not a Wi-Fi state")
+            require(connected and pending_indication is None and
+                    not (slot is not None and
+                         slot["phase"] != record_rules["active_phase"] and
+                         not slot["recovery_required"] and
+                         not slot["terminal_event_confirmed"]) and
+                    ordinary_pending is not None and
+                    ordinary_pending == snapshot, "EXPECTATION",
+                    f"{step_label} cannot emit the latest ordinary status")
+            ordinary_pending = None
+            pending_indication = "ordinary_status"
+        elif action == "confirm_ordinary_status":
+            _mapping(raw_step, {"action"}, set(), step_label)
+            require(pending_indication == "ordinary_status", "EXPECTATION",
+                    f"{step_label} has no ordinary status to confirm")
+            pending_indication = None
+            features.add("ordinary_status_confirmation")
         elif action == "emit_status":
             _mapping(raw_step, {"action"}, set(), step_label)
             require(connected and slot is not None and
                     slot["phase"] != record_rules["active_phase"] and
                     slot["accepted_confirmed"] and slot["status_changed"] and
                     not slot["status_confirmed"] and
+                    not slot["recovery_required"] and
+                    ordinary_pending is None and
                     pending_indication is None, "EXPECTATION",
                     f"{step_label} cannot emit the final status")
             pending_indication = "final_status"
@@ -1996,11 +2077,13 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
                     (not slot["status_changed"] or slot["status_confirmed"]) and
                     pending_indication is None and
                     not slot["terminal_event_emitted"] and
-                    not slot["terminal_recovery_required"] and
+                    not slot["recovery_required"] and
                     operation_id == slot["operation_id"] and
                     operation == slot["operation"] and
                     event == rules["sequencing"]["terminal_events"][operation],
                     "EXPECTATION", f"{step_label} terminal event is inconsistent")
+            if ordinary_pending is not None:
+                features.add("ordinary_status_deferred")
             slot["terminal_event_emitted"] = True
             pending_indication = "terminal_event"
             features.add("operation_correlation")
@@ -2034,9 +2117,10 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
                         f"{step_label} operation record differs")
             if (reconnected and slot is not None and
                     slot["phase"] != record_rules["active_phase"] and
-                    slot["terminal_recovery_required"]):
+                    slot["recovery_required"]):
                 recovered_terminal = True
                 features.add("disconnect_recovery")
+                features.add(f"disconnect_recovery:{slot['operation']}")
             if actual == lifecycle["get_operation_no_record_status"] and \
                     reboot_cleared_record:
                 features.add("reboot_clears")
@@ -2061,7 +2145,7 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
                                     f"{step_label}.operation_id", 1, UINT32_MAX)
             expected = _string(step["expect"], f"{step_label}.expect")
             if pending_indication is not None:
-                actual = "ATT:procedure_already_in_progress"
+                actual = "ATT:profile_tx_indication_pending"
                 reason = "pending_indication"
             elif slot is None or slot["operation_id"] != operation_id:
                 actual = lifecycle["ack_missing_or_mismatch_status"]
@@ -2069,7 +2153,7 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
             elif slot["phase"] == record_rules["active_phase"]:
                 actual = lifecycle["ack_active_status"]
                 reason = "active"
-            elif ((not slot["terminal_recovery_required"] and
+            elif ((not slot["recovery_required"] and
                    slot["terminal_event_confirmed"]) or
                   (recovered_terminal and
                    lifecycle["reconnect_ack_without_replay"])):
@@ -2094,20 +2178,32 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
             _mapping(raw_step, {"action"}, set(), step_label)
             require(slot is not None and pending_indication == "ack_response",
                     "EXPECTATION", f"{step_label} has no ACK response to confirm")
+            acknowledged_operation = slot["operation"]
             slot = None
             pending_indication = None
             recovered_terminal = False
             features.add("terminal_ack")
             features.add("ack_confirmation_clears")
+            features.add(f"terminal_ack:{acknowledged_operation}")
         elif action == "disconnect":
             _mapping(raw_step, {"action"}, set(), step_label)
             require(connected, "EXPECTATION",
                     f"{step_label} is already disconnected")
             if (slot is not None and
-                    slot["phase"] != record_rules["active_phase"]):
-                slot["terminal_recovery_required"] = True
+                    (slot["phase"] != record_rules["active_phase"] or
+                     pending_indication in {
+                         "accepted_response", "final_status", "terminal_event"
+                     })):
+                slot["recovery_required"] = True
+            if pending_indication == "accepted_response":
+                features.add("accepted_response_discarded")
             if pending_indication == "ack_response":
                 features.add("ack_disconnect_retains")
+            if ordinary_pending is not None or pending_indication == "ordinary_status":
+                features.add("ordinary_status_discarded")
+            if pending_indication == "final_status":
+                features.add("final_status_discarded")
+            ordinary_pending = None
             pending_indication = None
             connected = False
             recovered_terminal = False
@@ -2121,7 +2217,7 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
             _mapping(raw_step, {"action"}, set(), step_label)
             require(connected and reconnected and slot is not None and
                     slot["phase"] != record_rules["active_phase"] and
-                    slot["terminal_recovery_required"] and
+                    slot["recovery_required"] and
                     pending_indication is None, "EXPECTATION",
                     f"{step_label} expected no replayed terminal event")
             features.add("no_terminal_replay")
@@ -2144,6 +2240,7 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
             connected = False
             reconnected = False
             recovered_terminal = False
+            ordinary_pending = None
             features.add("reboot")
         else:
             fail("VALUE", f"unknown operation action: {action}")
@@ -2357,6 +2454,12 @@ def validate_vectors(protocol: dict[str, Any],
         **{f"edge.{name}": value for name, value in
            result_rules["edge_cases"].items()},
     }
+    scan_policy = protocol["wire_rules"]["scan_result"]
+    scan_security = scan_policy["representable_security"]
+    representable_authmodes = {
+        authmode for values in scan_security.values() for authmode in values
+    }
+    scan_filter_cases: set[str] = set()
     wifi_cases: set[str] = set()
     for index, raw_case in enumerate(_list(root["wifi_cases"],
                                            "vectors.wifi_cases", True)):
@@ -2367,13 +2470,55 @@ def validate_vectors(protocol: dict[str, Any],
                 f"duplicate vector ID: {case_id}")
         ids.add(case_id)
         case_name = _string(case["case"], f"{case_id}.case")
-        require(case_name in wifi_expectations and case_name not in wifi_cases,
+        if case_name in wifi_expectations:
+            require(case_name not in wifi_cases, "OPERATION",
+                    f"{case_id} Wi-Fi case is duplicated")
+            require(case["expect"] == wifi_expectations[case_name],
+                    "EXPECTATION",
+                    f"{case_id} Wi-Fi edge result differs from the protocol")
+            wifi_cases.add(case_name)
+            continue
+        require(case_name in {"scan_filtering", "scan_filtering_under_limit"} and
+                case_name not in scan_filter_cases,
                 "OPERATION", f"{case_id} Wi-Fi case is unknown or duplicated")
-        require(case["expect"] == wifi_expectations[case_name], "EXPECTATION",
-                f"{case_id} Wi-Fi edge result differs from the protocol")
-        wifi_cases.add(case_name)
-    require(wifi_cases == set(wifi_expectations), "COVERAGE",
-            "Wi-Fi vectors must cover every observable edge case")
+        expected = _mapping(case["expect"], {
+            "input", "filtered_ssids", "count",
+        }, set(), f"{case_id}.expect")
+        input_records = _list(expected["input"], f"{case_id}.input", True)
+        filtered_ssids = _list(expected["filtered_ssids"],
+                               f"{case_id}.filtered_ssids")
+        for index, raw_record in enumerate(input_records):
+            record = _mapping(raw_record, {"ssid", "authmode"}, set(),
+                              f"{case_id}.input[{index}]")
+            require(type(record["ssid"]) is str,
+                    "TYPE", f"{case_id}.input[{index}].ssid must be a string")
+            _string(record["authmode"], f"{case_id}.input[{index}].authmode")
+        expected_filtered = [
+            record["ssid"] for record in input_records
+            if record["ssid"] and record["authmode"] in representable_authmodes
+        ]
+        filtered_values = [
+            _string(value, f"{case_id}.filtered_ssids[{index}]")
+            for index, value in enumerate(filtered_ssids)
+        ]
+        require(len(filtered_values) == len(set(filtered_values)),
+                "DUPLICATE_ID", f"{case_id}.filtered_ssids contains duplicates")
+        expected_count = min(len(expected_filtered),
+                             scan_policy["maximum_records"])
+        actual_count = _integer(expected["count"], f"{case_id}.count", 0,
+                                scan_policy["maximum_records"])
+        require(actual_count == len(filtered_values) == expected_count,
+                "EXPECTATION", f"{case_id} filtered count differs")
+        expected_set = set(expected_filtered)
+        actual_set = set(filtered_values)
+        require(actual_set <= expected_set and
+                (len(expected_filtered) > scan_policy["maximum_records"] or
+                 actual_set == expected_set), "EXPECTATION",
+                f"{case_id} filtered records differ")
+        scan_filter_cases.add(case_name)
+    require(wifi_cases == set(wifi_expectations) and
+            scan_filter_cases == {"scan_filtering", "scan_filtering_under_limit"},
+            "COVERAGE", "Wi-Fi vectors must cover policy and edge cases")
 
     operation_features: set[str] = set()
     for raw_case in _list(root["operation_cases"],
@@ -2394,6 +2539,19 @@ def validate_vectors(protocol: dict[str, Any],
         "ack_confirmation_clears", "ack_disconnect_retains",
         "terminal_ack", "reboot_clears", "id_exhaustion",
         "id_exhaustion_empty", "id_exhaustion_no_record",
+        "status_coalesced", "status_latest_replaced",
+        "ordinary_status_confirmation", "ordinary_status_discarded",
+        "ordinary_status_deferred", "accepted_response_discarded",
+        "final_status_latched", "final_status_discarded",
+        "connect_authentication_failure",
+        *{f"timeout:{operation}" for operation in
+          protocol["wire_rules"]["operation_lifecycle"]["accepted_commands"]},
+        *{f"failed:{operation}" for operation in
+          protocol["wire_rules"]["operation_lifecycle"]["accepted_commands"]},
+        *{f"disconnect_recovery:{operation}" for operation in
+          protocol["wire_rules"]["operation_lifecycle"]["accepted_commands"]},
+        *{f"terminal_ack:{operation}" for operation in
+          protocol["wire_rules"]["operation_lifecycle"]["accepted_commands"]},
         *{f"succeeded:{operation}" for operation in
           protocol["wire_rules"]["operation_lifecycle"]["accepted_commands"]},
         *{f"terminal_event:{operation}" for operation in

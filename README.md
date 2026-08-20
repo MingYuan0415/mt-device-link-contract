@@ -25,10 +25,14 @@ in canonical text form and in complete little-endian ATT octet order. A client
 enables `server_tx` indications by writing `02 00` to its encrypted and
 authenticated CCCD before sending a command.
 
-GATT rejections use fixed ATT errors: insufficient authentication `0x05`,
-insufficient encryption `0x0f`, invalid attribute value length `0x0d`, invalid
-header value `0x13`, indications not enabled `0xfd`, and an unconfirmed prior
-`server_tx` indication `0xfe`.
+GATT rejections use the NimBLE SC-only security gate before application access
+callbacks. A link that is not both encrypted and authenticated uses
+insufficient authentication `0x05`; `0x0f` remains the standard insufficient
+encryption value for adapters or hosts that report that distinction. Invalid
+attribute value length is `0x0d`, invalid header value is `0x13`, indications
+not enabled is the profile value `0xfd`, and an unconfirmed prior `server_tx`
+indication is the profile value `0xfe`. Clients should treat `0x05` and `0x0f`
+as a request to complete secure pairing or re-encryption.
 
 ## Security
 
@@ -39,13 +43,11 @@ active. This is the authenticated Numeric Comparison association model defined
 by the [Bluetooth Core Security Manager specification][bluetooth-sm].
 
 The device retains one persistent bond. That peer may reconnect outside the
-pairing window. A replacement is held as a temporary candidate and requires new
-physical confirmation. The old bond is deleted only after Numeric Comparison
-has completed, a 16-byte key is available, and the candidate bond is durably
-stored. Before that commit point, pairing failure, storage failure, or power
-loss leaves the old bond in place. The temporary candidate does not count
-against the one-bond limit. OOB bootstrap and application encryption are not
-part of this profile.
+pairing window. Replacing it requires a locally confirmed clear of the old bond,
+followed by a new physical-confirmation pairing window. Remote, lossless bond
+replacement is not a v1 guarantee: after the local clear, pairing or storage
+failure does not restore the old bond. OOB bootstrap and application encryption
+are not part of this profile.
 
 ## MTU and capacity
 
@@ -53,9 +55,9 @@ The preferred and required ATT MTU is 498. A Write or Indication PDU uses three
 bytes before the attribute value, leaving `498 - 3 = 495` bytes for one Device
 Link message. Device Link does not add application fragmentation.
 
-The 498-byte ATT PDU is also the L2CAP SDU. The four-byte Basic L2CAP header
-makes a 502-byte L2CAP PDU, which occupies two 251-byte Link Layer payloads when
-DLE has negotiated that payload size.
+An implementation may use L2CAP and Link Layer Data Length Extension (DLE) to
+carry the ATT PDU. Their header and fragmentation arithmetic is an ESP-IDF
+implementation detail, not a cross-host v1 conformance condition.
 
 MTU 498 is a v1 capability baseline that reserves one complete 495-byte ATT
 Value, and therefore one 495-byte application message, for future commands and
@@ -113,10 +115,24 @@ The events are:
 
 SSID and profile fields are strict UTF-8 without Unicode control characters.
 OPEN credentials require an empty password. PERSONAL passwords contain 8..63
-printable ASCII bytes. Scan results carry at most five records; their selection
-and ordering are not part of this contract. `profile_ssid` identifies the saved
-profile, so it can temporarily differ from the SSID of an existing link after
-`SET_CREDENTIALS` succeeds while connected.
+printable ASCII bytes. Scan results carry at most five records; empty SSIDs and
+authmodes outside the following set are filtered before encoding:
+
+- OPEN: `WIFI_AUTH_OPEN`
+- PERSONAL: `WIFI_AUTH_WPA_PSK`, `WIFI_AUTH_WPA2_PSK`,
+  `WIFI_AUTH_WPA_WPA2_PSK`, `WIFI_AUTH_WPA3_PSK`, and
+  `WIFI_AUTH_WPA2_WPA3_PSK`
+
+WEP, WAPI-PSK, OWE, Enterprise, DPP, and unknown authmodes are filtered before
+encoding. The reported count is the number of representable records after
+filtering and the five-record limit. Selection and ordering are not part of this
+contract.
+`SET_CREDENTIALS` validates only the wire profile. If the actual AP authmode
+does not match the selected profile, `CONNECT` is accepted and completes with
+`AUTHENTICATION`.
+
+`profile_ssid` identifies the saved profile, so it can temporarily differ from
+the SSID of an existing link after `SET_CREDENTIALS` succeeds while connected.
 
 The minimum observable success meanings are fixed: `SET_CREDENTIALS` leaves a
 profile available without initiating a connection and does not change an
@@ -144,8 +160,10 @@ unacknowledged terminal record makes another asynchronous command return
 Operation IDs never wrap or repeat within a boot. After the allocator is
 exhausted, new asynchronous commands return an empty `INTERNAL` response until
 reboot. While that boot continues, every accepted operation eventually reaches
-`SUCCEEDED` or `FAILED`; the contract does not set an internal retry algorithm
-or timeout duration.
+`SUCCEEDED` or `FAILED` within an implementation-defined but finite timeout.
+The timeout starts when the operation is accepted and occupies the operation
+slot. A timeout produces the `TIMEOUT` failure and one terminal record/event;
+the protocol does not set an internal retry algorithm or timeout duration.
 
 `GET_OPERATION` returns the slot's operation, phase, failure and retained scan
 results. With no record it returns `NOT_FOUND`. `ACK_OPERATION` applies only to
@@ -154,28 +172,40 @@ yet been confirmed on the current connection is not acknowledged, and a
 missing or mismatched ID returns `NOT_FOUND`.
 
 A BLE disconnect neither cancels the operation nor clears its record. The
-terminal event is not replayed automatically. After reconnecting, the bonded
-client first negotiates MTU 498, reads the exact operation result through
-`GET_OPERATION`, reads the current Wi-Fi snapshot through `GET_STATUS`, and then
-acknowledges the terminal record. A reboot clears the RAM record, after which
-`GET_OPERATION` returns `NOT_FOUND` and only the current `GET_STATUS` snapshot
-remains available.
+terminal event is not replayed automatically. If the accepted response was not
+confirmed, that indication is discarded and the operation continues; this is a
+recovery condition, not a cancellation or replay request. After reconnecting,
+the bonded client first negotiates MTU 498, reads the exact operation result
+through `GET_OPERATION`, reads the current Wi-Fi snapshot through `GET_STATUS`,
+and then acknowledges the terminal record. The same query path applies when a
+final status or terminal event was lost. `ACK_OPERATION` after this recovery
+does not require a terminal indication confirmation on the new connection. A
+reboot clears the RAM record, after which `GET_OPERATION` returns `NOT_FOUND`
+and only the current `GET_STATUS` snapshot remains available.
 
-An accepted response must be confirmed before its terminal event. If the
-operation changes the Wi-Fi snapshot, the final `WIFI_STATUS` indication is
-confirmed before the terminal event. While a terminal indication is
-outstanding, a new ACK Write is rejected by ATT `0xfe`. On the current
-connection, `ACK_OPERATION` is accepted only after the terminal indication is
-confirmed; after a disconnect, the queried retained record may be acknowledged
-without replay. A successful ACK does not remove the record until the ACK
-response indication itself is confirmed, so a disconnect before that
+An accepted response must be confirmed before its terminal event. Ordinary
+`WIFI_STATUS` updates are best-effort notifications: only the latest pending
+snapshot is retained, duplicate snapshots are coalesced, and pending ordinary
+updates may be discarded on disconnect. `GET_STATUS` is authoritative. If the
+operation changes the Wi-Fi snapshot, its final status is latched and confirmed
+before the terminal event; ordinary updates cannot replace that final status.
+After an operation enters a terminal phase, an ordinary snapshot may continue
+to replace the retained latest snapshot, but it is deferred until the terminal
+event has been sent and confirmed. Recovery/no-replay connections may resume
+ordinary notifications after the retained record is queried. While any
+indication is outstanding, a new ACK Write is rejected by ATT `0xfe`. On the
+current connection, `ACK_OPERATION` is accepted only after the terminal
+indication is confirmed; after a disconnect, the queried retained record may be
+acknowledged without replay. A successful ACK does not remove the record until
+the ACK response indication itself is confirmed, so a disconnect before that
 confirmation leaves the record recoverable.
 
 ## Verification status
 
 The schema, vectors, and checker are internally consistent. The profile remains
-a freeze candidate. Numeric Comparison, bond replacement and reconnect, ATT MTU
-498, DLE, 495/496-byte boundaries, disconnect recovery, and on-air
-interoperability have not yet been validated on firmware and a mobile client.
+a freeze candidate. Numeric Comparison, local bond clear and reconnect, ATT MTU
+498, DLE, 495/496-byte boundaries, disconnect recovery, finite operation
+timeouts, and on-air interoperability have not yet been validated on firmware
+and a mobile client.
 
 [bluetooth-sm]: https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core_v6.3/out/en/host/security-manager-specification.html
