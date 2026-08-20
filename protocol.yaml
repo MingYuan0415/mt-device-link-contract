@@ -24,14 +24,17 @@ protocol:
         write_procedure: request
         max_value_bytes: 495
         encrypted: true
+        authenticated: true
       server_tx:
         uuid: 8f2a8c12-65f6-4f44-9c04-9c4c2f7b6a31
         att_octets: 316a7b2f4c9c049c444ff665128c2a8f
         properties: [indicate]
         max_value_bytes: 495
         encrypted: true
+        authenticated: true
         cccd_uuid: 0x2902
         cccd_write_encrypted: true
+        cccd_write_authenticated: true
         indication_enable_value_le: "0200"
     advertising:
       discovery_key: service_uuid
@@ -42,12 +45,27 @@ protocol:
   security:
     transport: ble_le_secure_connections
     sc_only: true
-    mitm: false
-    bonding: false
+    mitm: true
+    bonding: true
+    max_bonds: 1
+    io_capability: display_yes_no
+    association_model: numeric_comparison
+    encryption_key_bytes: 16
     pairing_window: physical_confirmation
     pairing_window_duration: implementation_defined
-    qr: false
-    security2: false
+    unbonded_pairing_requires_window: true
+    bonded_reconnect_requires_window: false
+    bond_replacement: physical_confirmation
+    bond_replacement_commit: after_all_requirements
+    bond_replacement_commit_requires:
+      - numeric_comparison_completed
+      - encryption_key_available
+      - candidate_persisted
+    bond_replacement_candidate: temporary
+    bond_replacement_candidate_counts_toward_persistent_limit: false
+    bond_replacement_failure_retains_old: true
+    bond_replacement_precommit_power_loss_retains_old: true
+    oob: false
     application_encryption: false
 
   transport:
@@ -57,6 +75,7 @@ protocol:
     att_pdu_bytes: 498
     att_value_header_bytes: 3
     maximum_att_value_bytes: 495
+    future_single_att_value_capacity: true
     l2cap_sdu_bytes: 498
     l2cap_basic_header_bytes: 4
     l2cap_pdu_bytes: 502
@@ -73,27 +92,37 @@ protocol:
     event_header_bytes: 2
     event_marker: 0xf0
     response_opcode_mask: 0x80
+    application_error_opcode: 0x80
     reserved_request_opcodes: [0x00, 0x70]
     request_opcode_msb_must_be_zero: true
     request_id_min: 1
     request_id_max: 255
     request_id_scope: ble_connection
+    operation_id_wire: u32
+    operation_id_zero_reserved: true
+    operation_id_scope: boot
+    operation_id_reuse_within_boot: false
+    operation_id_wrap: reject_until_reboot
+    operation_id_exhausted_status: INTERNAL
     server_tx_subscription_required: true
     one_outstanding_indication: true
     write_blocked_while_server_tx_unconfirmed: true
     request_pending_until: response_indication_confirmed
-    one_active_operation: true
-    active_operation_scope: device
-    active_operation_commands: [SCAN, SET_CREDENTIALS, CONNECT, DISCONNECT, FORGET]
-    active_operation_allows_queries: [GET_INFO, GET_STATUS]
-    active_request_id_reuse_status: BUSY
-    operation_conflict_status: BUSY
+    operation_slot_capacity: 1
+    operation_slot_commands: [SCAN, SET_CREDENTIALS, CONNECT, DISCONNECT, FORGET]
+    operation_slot_queries: [GET_INFO, GET_STATUS, GET_OPERATION]
+    operation_slot_controls: [ACK_OPERATION]
+    operation_slot_occupied_status: BUSY
+    terminal_record_retained_until: ack_or_reboot
+    terminal_event_replay_on_reconnect: false
     low_mtu:
       get_info_minimum_att_mtu: 23
       full_profile_required_att_mtu: 498
+      recovery_requires_full_mtu: true
       other_commands_status: MTU_TOO_SMALL
 
   att_errors:
+    insufficient_authentication: 0x05
     insufficient_encryption: 0x0f
     invalid_attribute_value_length: 0x0d
     value_not_allowed: 0x13
@@ -101,6 +130,7 @@ protocol:
     procedure_already_in_progress: 0xfe
     gatt_precedence:
       - encrypted_link
+      - authenticated_link
       - att_value_length
       - header_values
       - server_tx_subscription
@@ -110,17 +140,36 @@ protocol:
       - get_info_low_mtu_exception
       - required_mtu
       - payload
-      - active_operation
-      - service_admission
+      - operation_slot
+      - observable_precondition
 
   limits:
     min_ssid_bytes: 1
     max_ssid_bytes: 32
     min_personal_password_bytes: 8
     max_personal_password_bytes: 63
+    min_scan_networks: 0
     max_scan_networks: 5
-    maximum_scan_event_bytes: 180
+    maximum_scan_event_bytes: 183
+    maximum_get_operation_response_bytes: 186
     maximum_get_info_response_bytes: 11
+    bindings:
+      ssid:
+        minimum: min_ssid_bytes
+        maximum: max_ssid_bytes
+        zero_length_allowed: false
+      optional_ssid:
+        minimum: min_ssid_bytes
+        maximum: max_ssid_bytes
+        zero_length_allowed: true
+      personal_password:
+        minimum: min_personal_password_bytes
+        maximum: max_personal_password_bytes
+        zero_length_allowed: true
+      scan_networks:
+        minimum: min_scan_networks
+        maximum: max_scan_networks
+        zero_length_allowed: true
 
 wire_types:
   u8:
@@ -128,6 +177,10 @@ wire_types:
     encoding: unsigned
   u16:
     size_bytes: 2
+    encoding: unsigned
+    byte_order: little
+  u32:
+    size_bytes: 4
     encoding: unsigned
     byte_order: little
   i8:
@@ -153,6 +206,10 @@ types:
         wire: bytes_u8
         min_bytes: 1
         max_bytes: 32
+        encoding: utf8
+        text_rule: ssid
+        limit_ref: ssid
+        forbidden_unicode_categories: [Cc]
       - name: security
         wire: enum_u8
         enum: wifi_security
@@ -194,30 +251,29 @@ enums:
     STORAGE: 6
     INTERNAL: 7
   operation:
+    SCAN: 3
     SET_CREDENTIALS: 4
     CONNECT: 5
     DISCONNECT: 6
     FORGET: 7
+  operation_phase:
+    ACTIVE: 1
+    SUCCEEDED: 2
+    FAILED: 3
 
 commands:
   - id: 1
     name: GET_INFO
     request: []
     response:
-      - name: protocol_major
-        wire: u8
-      - name: protocol_minor
-        wire: u8
-      - name: firmware_major
-        wire: u8
-      - name: firmware_minor
-        wire: u8
-      - name: firmware_patch
-        wire: u8
-      - name: pairing_window_open
-        wire: bool
-      - name: required_att_mtu
-        wire: u16
+      - {name: protocol_major, wire: u8}
+      - {name: protocol_minor, wire: u8}
+      - {name: firmware_major, wire: u8}
+      - {name: firmware_minor, wire: u8}
+      - {name: firmware_patch, wire: u8}
+      - {name: pairing_window_open, wire: bool}
+      - {name: required_att_mtu, wire: u16}
+    response_semantic: link_info
     asynchronous: false
     completion_event: null
     allowed_statuses: [OK, INVALID_ARGUMENT, INTERNAL]
@@ -227,16 +283,17 @@ commands:
     name: GET_STATUS
     request: []
     response:
-      - name: state
-        wire: enum_u8
-        enum: wifi_state
-      - name: failure
-        wire: enum_u8
-        enum: wifi_failure
+      - {name: state, wire: enum_u8, enum: wifi_state}
+      - {name: failure, wire: enum_u8, enum: wifi_failure}
       - name: profile_ssid
         wire: bytes_u8
         min_bytes: 0
         max_bytes: 32
+        encoding: utf8
+        text_rule: ssid
+        limit_ref: optional_ssid
+        forbidden_unicode_categories: [Cc]
+    response_semantic: wifi_status
     asynchronous: false
     completion_event: null
     allowed_statuses: [OK, INVALID_ARGUMENT, MTU_TOO_SMALL, INTERNAL]
@@ -245,7 +302,7 @@ commands:
   - id: 3
     name: SCAN
     request: []
-    response: []
+    response: [{name: operation_id, wire: u32, nonzero: true}]
     asynchronous: true
     completion_event: SCAN_COMPLETE
     allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, UNAVAILABLE, MTU_TOO_SMALL, INTERNAL]
@@ -258,14 +315,20 @@ commands:
         wire: bytes_u8
         min_bytes: 1
         max_bytes: 32
+        encoding: utf8
+        text_rule: ssid
+        limit_ref: ssid
+        forbidden_unicode_categories: [Cc]
       - name: password
         wire: bytes_u8
         min_bytes: 0
         max_bytes: 63
-      - name: security
-        wire: enum_u8
-        enum: wifi_security
-    response: []
+        encoding: printable_ascii
+        text_rule: password
+        limit_ref: personal_password
+      - {name: security, wire: enum_u8, enum: wifi_security}
+    request_semantic: credentials
+    response: [{name: operation_id, wire: u32, nonzero: true}]
     asynchronous: true
     completion_event: OPERATION_COMPLETE
     allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, STORAGE, UNAVAILABLE, MTU_TOO_SMALL, INTERNAL]
@@ -274,7 +337,7 @@ commands:
   - id: 5
     name: CONNECT
     request: []
-    response: []
+    response: [{name: operation_id, wire: u32, nonzero: true}]
     asynchronous: true
     completion_event: OPERATION_COMPLETE
     allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, NOT_FOUND, UNAVAILABLE, STORAGE, MTU_TOO_SMALL, INTERNAL]
@@ -283,7 +346,7 @@ commands:
   - id: 6
     name: DISCONNECT
     request: []
-    response: []
+    response: [{name: operation_id, wire: u32, nonzero: true}]
     asynchronous: true
     completion_event: OPERATION_COMPLETE
     allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, UNAVAILABLE, MTU_TOO_SMALL, INTERNAL]
@@ -292,67 +355,79 @@ commands:
   - id: 7
     name: FORGET
     request: []
-    response: []
+    response: [{name: operation_id, wire: u32, nonzero: true}]
     asynchronous: true
     completion_event: OPERATION_COMPLETE
     allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, NOT_FOUND, STORAGE, UNAVAILABLE, MTU_TOO_SMALL, INTERNAL]
+    requires_full_mtu: true
+
+  - id: 8
+    name: GET_OPERATION
+    request: []
+    response:
+      - {name: operation_id, wire: u32, nonzero: true}
+      - {name: operation, wire: enum_u8, enum: operation}
+      - {name: phase, wire: enum_u8, enum: operation_phase}
+      - {name: failure, wire: enum_u8, enum: wifi_failure}
+      - {name: count, wire: u8}
+      - {name: networks, wire: repeated, item_type: scan_network, count_field: count, max_count: 5, limit_ref: scan_networks}
+    response_semantic: operation_record
+    asynchronous: false
+    completion_event: null
+    allowed_statuses: [OK, INVALID_ARGUMENT, NOT_FOUND, MTU_TOO_SMALL, INTERNAL]
+    requires_full_mtu: true
+
+  - id: 9
+    name: ACK_OPERATION
+    request: [{name: operation_id, wire: u32, nonzero: true}]
+    response: []
+    asynchronous: false
+    completion_event: null
+    allowed_statuses: [OK, INVALID_ARGUMENT, BUSY, NOT_FOUND, MTU_TOO_SMALL, INTERNAL]
     requires_full_mtu: true
 
 events:
   - id: 1
     name: WIFI_STATUS
     payload:
-      - name: state
-        wire: enum_u8
-        enum: wifi_state
-      - name: failure
-        wire: enum_u8
-        enum: wifi_failure
+      - {name: state, wire: enum_u8, enum: wifi_state}
+      - {name: failure, wire: enum_u8, enum: wifi_failure}
       - name: profile_ssid
         wire: bytes_u8
         min_bytes: 0
         max_bytes: 32
+        encoding: utf8
+        text_rule: ssid
+        limit_ref: optional_ssid
+        forbidden_unicode_categories: [Cc]
+    payload_semantic: wifi_status
 
   - id: 2
     name: SCAN_COMPLETE
     payload:
-      - name: request_id
-        wire: u8
-      - name: failure
-        wire: enum_u8
-        enum: wifi_failure
-      - name: count
-        wire: u8
-      - name: networks
-        wire: repeated
-        item_type: scan_network
-        count_field: count
+      - {name: operation_id, wire: u32, nonzero: true}
+      - {name: failure, wire: enum_u8, enum: wifi_failure}
+      - {name: count, wire: u8}
+      - {name: networks, wire: repeated, item_type: scan_network, count_field: count, max_count: 5, limit_ref: scan_networks}
+    payload_semantic: scan_result
 
   - id: 3
     name: OPERATION_COMPLETE
     payload:
-      - name: request_id
-        wire: u8
-      - name: operation
-        wire: enum_u8
-        enum: operation
-      - name: failure
-        wire: enum_u8
-        enum: wifi_failure
+      - {name: operation_id, wire: u32, nonzero: true}
+      - {name: operation, wire: enum_u8, enum: operation}
+      - {name: failure, wire: enum_u8, enum: wifi_failure}
+    payload_semantic: operation_result
 
 wire_rules:
   response:
     synchronous_success_status: OK
     asynchronous_success_status: ACCEPTED
-    error_payload: empty
+    known_command_error_payload: empty
     unknown_opcode_status: UNSUPPORTED
+    unknown_opcode_response_opcode: 0x80
+    unknown_opcode_payload: offending_opcode
     malformed_payload_status: INVALID_ARGUMENT
-
-  admission:
-    service_unavailable_status: UNAVAILABLE
-    service_unavailable_bypass: [GET_INFO, GET_STATUS]
-    profile_required: [CONNECT, FORGET]
-    profile_missing_status: NOT_FOUND
 
   text:
     ssid_encoding: utf8
@@ -361,9 +436,22 @@ wire_rules:
     password_encoding: printable_ascii
     password_min_octet: 0x20
     password_max_octet: 0x7e
-    open_password: empty
-    personal_password_bytes: [8, 63]
+    credential_password_rules:
+      OPEN:
+        mode: empty
+      PERSONAL:
+        mode: bounded
+        minimum: min_personal_password_bytes
+        maximum: max_personal_password_bytes
     raw_64_hex_psk_supported: false
+    text_rules:
+      ssid:
+        encoding: utf8
+        forbidden_unicode_categories: [Cc]
+      password:
+        encoding: printable_ascii
+        min_octet: 0x20
+        max_octet: 0x7e
 
   wifi_status:
     connected_means_ipv4: true
@@ -378,47 +466,97 @@ wire_rules:
     profile_required_states: [CONNECTING, CONNECTED]
     profile_required_failures: [AUTHENTICATION, AP_NOT_FOUND, TIMEOUT, LINK_LOST]
     emitted_when_snapshot_changes: true
-    intermediate_updates: coalesce_latest
 
-  scan:
+  scan_result:
+    scan_operation: SCAN
     success_failure: NONE
     failure_values: [TIMEOUT, RADIO, INTERNAL]
     failure_has_empty_results: true
-    filter_empty_ssid: true
-    filter_invalid_utf8: true
-    filter_unsupported_security: true
-    deduplicate_by: ssid_octets
-    duplicate_selection: strongest_rssi
-    sort: [rssi_descending, ssid_octets_ascending]
     maximum_records: 5
 
-  operation_completion:
+  operation_result:
     success_failure: NONE
     failure_matrix:
+      SCAN: [NONE, TIMEOUT, RADIO, INTERNAL]
       SET_CREDENTIALS: [NONE, STORAGE, INTERNAL]
       CONNECT: [NONE, AUTHENTICATION, AP_NOT_FOUND, TIMEOUT, LINK_LOST, RADIO, STORAGE, INTERNAL]
       DISCONNECT: [NONE, RADIO, INTERNAL]
       FORGET: [NONE, STORAGE, RADIO, INTERNAL]
     success_postconditions:
-      SET_CREDENTIALS: profile_saved_without_connecting
+      SET_CREDENTIALS: profile_available_without_connecting
       CONNECT: connected_with_ipv4
-      DISCONNECT: disconnect_completed
+      DISCONNECT: disconnected_at_completion
       FORGET: disconnected_and_profile_absent
-    failure_rollback_required: false
-    failure_state_source: WIFI_STATUS
+    edge_cases:
+      set_credentials_while_connected:
+        command: SET_CREDENTIALS
+        condition: link_connected
+        immediate_status: ACCEPTED
+        creates_operation: true
+        observable_result: retain_link_no_connect
+      connect_without_profile:
+        command: CONNECT
+        condition: profile_absent
+        immediate_status: NOT_FOUND
+        creates_operation: false
+        observable_result: no_operation
+      forget_without_profile:
+        command: FORGET
+        condition: profile_absent
+        immediate_status: NOT_FOUND
+        creates_operation: false
+        observable_result: no_operation
+      disconnect_when_idle:
+        command: DISCONNECT
+        condition: link_disconnected
+        immediate_status: ACCEPTED
+        creates_operation: true
+        observable_result: success_profile_retained
+
+  operation_record:
+    active_phase: ACTIVE
+    succeeded_phase: SUCCEEDED
+    failed_phase: FAILED
+    active_failure: NONE
+    active_result_count: 0
+    succeeded_failure: NONE
+    failed_result_count: 0
+    failure_matrix_ref: operation_result.failure_matrix
+    non_scan_result_count: 0
+    scan_results_phase: SUCCEEDED
+
+  operation_lifecycle:
+    accepted_commands: [SCAN, SET_CREDENTIALS, CONNECT, DISCONNECT, FORGET]
+    accepted_response_field: operation_id
+    slot_capacity: 1
+    slot_scope: device
+    operation_id_scope: boot
+    operation_id_exhausted_status: INTERNAL
+    must_reach_terminal: true
+    terminal_event_generated_once: true
+    new_operation_while_active_status: BUSY
+    new_operation_while_terminal_status: BUSY
+    get_operation_no_record_status: NOT_FOUND
+    ack_active_status: BUSY
+    ack_before_terminal_event_status: BUSY
+    ack_missing_or_mismatch_status: NOT_FOUND
+    ack_terminal_clears_record: true
+    disconnect_clears_record: false
+    reconnect_query: GET_OPERATION
+    reconnect_status_query: GET_STATUS
+    terminal_event_replay: false
+    reboot_clears_record: true
+    ack_requires_terminal_event_confirmation: true
+    ack_clears_after_response_confirmation: true
+    reconnect_ack_without_replay: true
 
   sequencing:
     accepted_response_confirmation_precedes_terminal_event: true
     final_status_confirmation_precedes_terminal_event_if_changed: true
-    accepted_operation_terminal_events_exactly_once: true
+    ack_response_confirmation_precedes_record_clear: true
     terminal_events:
       SCAN: SCAN_COMPLETE
       SET_CREDENTIALS: OPERATION_COMPLETE
       CONNECT: OPERATION_COMPLETE
       DISCONNECT: OPERATION_COMPLETE
       FORGET: OPERATION_COMPLETE
-    ble_disconnect_operation_behavior: continue
-    ble_disconnect_completion_replay: false
-    ble_disconnect_request_correlation: discard
-    reconnect_recovery: GET_STATUS
-    wifi_management_policy_in_contract: false

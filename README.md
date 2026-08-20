@@ -1,17 +1,18 @@
 # MicroTech Device Link Contract
 
-This repository is the canonical source for the deliberately small
-`device-link/v1` contract. It is a clean break from all previous provisioning
-and Device Link profiles; no compatibility framing is defined.
+This repository is the canonical source for the `device-link/v1` BLE contract.
+`protocol.yaml` is normative. `vectors/golden.json` contains byte-level examples
+and bounded operation-lifecycle scenarios; both files contribute to the
+normalized contract digest.
 
-`protocol.yaml` is the only normative protocol source. `vectors/golden.json`
-contains byte messages, ATT boundaries, and connection-scoped transaction
-scenarios. The checker validates both and includes both in the normalized
-digest.
+The profile is a clean break from previous Device Link profiles. It defines the
+BLE transport and the Wi-Fi information exchanged over that transport. It does
+not define Wi-Fi retry, automatic connection, persistence implementation, scan
+selection, or rollback policy.
 
-## GATT profile
+## GATT and discovery
 
-The fixed-binary profile uses one service and two encrypted characteristics:
+The profile uses one service and two authenticated encrypted characteristics:
 
 | Characteristic | Property | Maximum ATT value |
 | --- | --- | ---: |
@@ -19,150 +20,162 @@ The fixed-binary profile uses one service and two encrypted characteristics:
 | `server_tx` | Indicate | 495 bytes |
 
 Clients discover the service by its complete 128-bit UUID in advertising data
-(AD type `0x07`). The local name is informational. UUID text is canonical
-lowercase RFC 4122 form; the contract also fixes each complete 16-byte
-little-endian ATT representation. The `server_tx` CCCD is `0x2902`; a client
-writes `02 00` over the encrypted link to enable indications before writing a
-command.
+(AD type `0x07`). The local name is informational. The contract fixes each UUID
+in canonical text form and in complete little-endian ATT octet order. A client
+enables `server_tx` indications by writing `02 00` to its encrypted and
+authenticated CCCD before sending a command.
 
-GATT rejections use fixed ATT errors: insufficient encryption `0x0f`, invalid
-attribute value length `0x0d`, invalid header value `0x13`, indications not
-enabled `0xfd`, and an unconfirmed prior `server_tx` Indication `0xfe`.
+GATT rejections use fixed ATT errors: insufficient authentication `0x05`,
+insufficient encryption `0x0f`, invalid attribute value length `0x0d`, invalid
+header value `0x13`, indications not enabled `0xfd`, and an unconfirmed prior
+`server_tx` indication `0xfe`.
 
-The link uses LE Secure Connections in SC-only mode without MITM, Bonding, QR,
-Security 2, or application encryption. Pairing is accepted only in a
-device-controlled physical-confirmation window. The window mechanism and
-duration are device policy; `GET_INFO` reports whether it is currently open.
+## Security
 
-## MTU and data length
+Pairing uses LE Secure Connections Numeric Comparison with MITM protection and
+a 16-byte encryption key. The device exposes DisplayYesNo capability and accepts
+an unbonded peer only while a locally opened physical-confirmation window is
+active. This is the authenticated Numeric Comparison association model defined
+by the [Bluetooth Core Security Manager specification][bluetooth-sm].
 
-The preferred and required ATT MTU is 498. A Write or Indication PDU has three
-bytes before the attribute value, leaving `498 - 3 = 495` bytes.
+The device retains one persistent bond. That peer may reconnect outside the
+pairing window. A replacement is held as a temporary candidate and requires new
+physical confirmation. The old bond is deleted only after Numeric Comparison
+has completed, a 16-byte key is available, and the candidate bond is durably
+stored. Before that commit point, pairing failure, storage failure, or power
+loss leaves the old bond in place. The temporary candidate does not count
+against the one-bond limit. OOB bootstrap and application encryption are not
+part of this profile.
 
-The 498-byte ATT PDU is the L2CAP SDU. A Basic L2CAP header adds four bytes, so
-the complete L2CAP PDU is 502 bytes. If a 251-byte Link Layer payload has been
-negotiated, the L2CAP PDU occupies exactly two payloads:
+## MTU and capacity
 
-```text
-ATT PDU / L2CAP SDU       498
-Basic L2CAP header          4
-L2CAP PDU                 502
-Link Layer payload        251
-Payload count               2
-```
+The preferred and required ATT MTU is 498. A Write or Indication PDU uses three
+bytes before the attribute value, leaving `498 - 3 = 495` bytes for one Device
+Link message. Device Link does not add application fragmentation.
 
-This is protocol and buffer-sizing arithmetic. It does not claim that DLE,
-controller/HCI segmentation, peer MTU negotiation, or real hardware
-interoperability has been validated. Device Link does not add application
-fragmentation. The 495/496-byte vectors are opaque ATT value boundary cases,
-not Device Link messages.
+The 498-byte ATT PDU is also the L2CAP SDU. The four-byte Basic L2CAP header
+makes a 502-byte L2CAP PDU, which occupies two 251-byte Link Layer payloads when
+DLE has negotiated that payload size.
 
-`GET_INFO` is the only command allowed below MTU 498. Its fixed response is 11
-bytes including the response header, so it fits the default ATT MTU 23. Every
-other command returns an empty `MTU_TOO_SMALL` response below MTU 498.
+MTU 498 is a v1 capability baseline that reserves one complete 495-byte ATT
+Value, and therefore one 495-byte application message, for future commands and
+events. It is intentionally not
+derived from the largest message currently defined. Existing fixed-binary
+messages still require a new opcode or protocol version when their layouts
+change.
 
-## Wire messages
+`GET_INFO` is the only command admitted below MTU 498. Every other known
+command returns an empty `MTU_TOO_SMALL` response, so recovery first negotiates
+MTU 498 before `GET_OPERATION`, `GET_STATUS`, or `ACK_OPERATION`. An ATT Value
+that exceeds 495 bytes is rejected by ATT length validation before application
+MTU routing. The 495/496-byte vectors validate the ATT Value boundary; they are
+not application messages.
 
-All integers are little endian. `u8`/`u16` are unsigned; `i8` is one-byte
-two's complement; `bool` is one byte and accepts only 0 or 1. `enum_u8` uses
-the named registry value. `bytes_u8` is a one-byte octet count followed by
-exactly that many octets. A `repeated` field concatenates items and takes its
-count from the named preceding `u8` field.
+For an otherwise valid request, unknown or reserved opcodes are resolved before
+the full-MTU check. Known commands then apply the MTU check, payload validation,
+operation-slot admission, and observable command preconditions in that order.
+
+## Messages
+
+All integers are little endian. Messages use these headers:
 
 ```text
 request   [opcode:u8, request_id:u8, payload...]
 response  [opcode|0x80:u8, request_id:u8, status:u8, payload...]
+unknown   [0x80:u8, request_id:u8, UNSUPPORTED:u8, offending_opcode:u8]
 event     [0xf0:u8, event_id:u8, payload...]
 ```
 
-Request IDs 1..255 are scoped to one BLE connection. Request ID zero, opcode
-zero, opcode `0x70`, and request opcodes with bit 7 set are invalid. Error
-responses have no payload. Unknown request opcodes that can be represented
-without colliding with event framing receive `UNSUPPORTED`.
+Request IDs 1..255 are scoped to one BLE connection and correlate a command
+with its immediate response. Opcodes `0x00` and `0x70` are reserved. An unknown
+or reserved opcode with a valid header uses the fixed four-byte `unknown`
+response; this avoids the `0x70 | 0x80 == 0xf0` event-marker collision. An
+opcode with bit 7 set, request ID zero, or a truncated header is rejected with
+ATT `0x13` instead. Ordinary non-success command responses have no payload.
 
-| Opcode | Command | Terminal result |
+| Opcode | Command | Successful result |
 | ---: | --- | --- |
-| 1 | `GET_INFO` | Fixed protocol, firmware, pairing-window, and MTU fields |
-| 2 | `GET_STATUS` | Current canonical Wi-Fi snapshot |
-| 3 | `SCAN` | `SCAN_COMPLETE` |
-| 4 | `SET_CREDENTIALS` | `OPERATION_COMPLETE`; saves only |
-| 5 | `CONNECT` | `OPERATION_COMPLETE`; uses the stored profile, or immediate `NOT_FOUND` |
-| 6 | `DISCONNECT` | `OPERATION_COMPLETE` |
-| 7 | `FORGET` | `OPERATION_COMPLETE`; disconnects and removes the profile, or immediate `NOT_FOUND` |
+| 1 | `GET_INFO` | Link, firmware, pairing-window, and required-MTU fields |
+| 2 | `GET_STATUS` | Current Wi-Fi snapshot |
+| 3 | `SCAN` | `operation_id`, followed by `SCAN_COMPLETE` |
+| 4 | `SET_CREDENTIALS` | `operation_id`, followed by `OPERATION_COMPLETE` |
+| 5 | `CONNECT` | `operation_id`, followed by `OPERATION_COMPLETE` |
+| 6 | `DISCONNECT` | `operation_id`, followed by `OPERATION_COMPLETE` |
+| 7 | `FORGET` | `operation_id`, followed by `OPERATION_COMPLETE` |
+| 8 | `GET_OPERATION` | The current active or retained terminal record |
+| 9 | `ACK_OPERATION` | Clears the matching retained terminal record |
 
-The three events are:
+The events are:
 
 - `WIFI_STATUS [state, failure, profile_ssid]`
-- `SCAN_COMPLETE [request_id, failure, count, networks...]`
-- `OPERATION_COMPLETE [request_id, operation, failure]`
+- `SCAN_COMPLETE [operation_id, failure, count, networks...]`
+- `OPERATION_COMPLETE [operation_id, operation, failure]`
 
-`CONNECTED` means IPv4 is available. An empty `profile_ssid` means no
-persistent profile. `WIFI_STATUS` has no request correlation; operation result
-and state are intentionally separate. `UNAVAILABLE` permits only `RADIO` or
-`INTERNAL`; ordinary active states require `NONE`; `ERROR` requires a non-zero
-failure, including `STORAGE`.
+SSID and profile fields are strict UTF-8 without Unicode control characters.
+OPEN credentials require an empty password. PERSONAL passwords contain 8..63
+printable ASCII bytes. Scan results carry at most five records; their selection
+and ordering are not part of this contract. `profile_ssid` identifies the saved
+profile, so it can temporarily differ from the SSID of an existing link after
+`SET_CREDENTIALS` succeeds while connected.
 
-`GET_INFO` and `GET_STATUS` remain available when the Wi-Fi service is
-unavailable. `GET_STATUS` reports the `UNAVAILABLE` snapshot; commands that
-need the service return an empty `UNAVAILABLE` response.
+The minimum observable success meanings are fixed: `SET_CREDENTIALS` leaves a
+profile available without initiating a connection and does not change an
+existing link; `CONNECT` reaches IPv4; `DISCONNECT` is disconnected when it
+completes and retains the profile; and `FORGET` is disconnected with no
+profile. `CONNECT` and `FORGET` return immediate `NOT_FOUND` without creating
+an operation when no profile exists. `DISCONNECT` while already disconnected
+is accepted and completes successfully. An occupied operation slot therefore
+returns `BUSY` before a missing-profile precondition is evaluated. Internal
+persistence, retry, rollback, and later automatic connection behavior remain
+outside the BLE contract.
 
-## Transactions
+## Transactions and recovery
 
-Only one `server_tx` Indication may await confirmation. A command Write remains
-pending until its response is confirmed. While any response or event
-Indication is unconfirmed, a new Write is rejected with GATT `Procedure Already
-in Progress` (`0xfe`).
+Only one `server_tx` indication may await confirmation. A command remains
+pending until its response indication is confirmed, and a new Write is rejected
+with ATT `0xfe` while any response or event indication remains unconfirmed.
 
-SCAN and the four mutating commands share one device-scoped active-operation
-slot. While it is active, `GET_INFO` and `GET_STATUS` may use a different
-request ID; another operation or reuse of the active ID returns `BUSY`.
+Accepted asynchronous commands return a nonzero little-endian `operation_id`
+(`u32`). Operation IDs are unique within one boot and are independent of the
+connection-scoped request ID. The device has one operation slot. An active or
+unacknowledged terminal record makes another asynchronous command return
+`BUSY`; status and operation queries remain available.
 
-An `ACCEPTED` response must be confirmed before its terminal event. When an
-operation changes the canonical Wi-Fi snapshot, the final `WIFI_STATUS` must
-also be confirmed before the terminal event. Intermediate status changes may
-be coalesced to the latest snapshot. Every accepted operation has exactly one
-terminal event while the BLE connection remains alive.
+Operation IDs never wrap or repeat within a boot. After the allocator is
+exhausted, new asynchronous commands return an empty `INTERNAL` response until
+reboot. While that boot continues, every accepted operation eventually reaches
+`SUCCEEDED` or `FAILED`; the contract does not set an internal retry algorithm
+or timeout duration.
 
-For a successful `SET_CREDENTIALS`, the profile is stored and the command does
-not initiate a connection. Successful `CONNECT` reaches `CONNECTED` (and
-therefore has IPv4); successful `DISCONNECT` is no longer connecting or
-connected when it completes; successful `FORGET` is both disconnected and has
-no profile. A later automatic reconnect after `DISCONNECT` is outside this
-contract. On failure, rollback is not required and the final `WIFI_STATUS` is
-the state of record.
+`GET_OPERATION` returns the slot's operation, phase, failure and retained scan
+results. With no record it returns `NOT_FOUND`. `ACK_OPERATION` applies only to
+the matching terminal record; an active record or a terminal event that has not
+yet been confirmed on the current connection is not acknowledged, and a
+missing or mismatched ID returns `NOT_FOUND`.
 
-If BLE disconnects, the device operation continues but its request correlation
-is discarded. Completion is not retained or replayed to another connection.
-A reconnected client uses `GET_STATUS`; a still-active operation continues to
-make new operations return `BUSY`. Automatic connection and reconnection are
-Wi-Fi manager policy and are not controlled by this BLE contract.
+A BLE disconnect neither cancels the operation nor clears its record. The
+terminal event is not replayed automatically. After reconnecting, the bonded
+client first negotiates MTU 498, reads the exact operation result through
+`GET_OPERATION`, reads the current Wi-Fi snapshot through `GET_STATUS`, and then
+acknowledges the terminal record. A reboot clears the RAM record, after which
+`GET_OPERATION` returns `NOT_FOUND` and only the current `GET_STATUS` snapshot
+remains available.
 
-## Text and scan rules
+An accepted response must be confirmed before its terminal event. If the
+operation changes the Wi-Fi snapshot, the final `WIFI_STATUS` indication is
+confirmed before the terminal event. While a terminal indication is
+outstanding, a new ACK Write is rejected by ATT `0xfe`. On the current
+connection, `ACK_OPERATION` is accepted only after the terminal indication is
+confirmed; after a disconnect, the queried retained record may be acknowledged
+without replay. A successful ACK does not remove the record until the ACK
+response indication itself is confirmed, so a disconnect before that
+confirmation leaves the record recoverable.
 
-SSIDs are 1..32 bytes of strict UTF-8 and may not contain Unicode control
-characters. They are neither trimmed nor normalized. OPEN credentials require
-an empty password. PERSONAL passwords are 8..63 printable ASCII bytes
-(`0x20..0x7e`); 64-character raw PSKs are not supported.
+## Verification status
 
-Scan output omits empty SSIDs, invalid UTF-8, and unsupported security types.
-Records are deduplicated by exact SSID octets, retaining the strongest RSSI,
-then sorted by descending RSSI and ascending SSID octets. At most five records
-are returned. RSSI is signed i8 in -127..0 dBm; the maximum event is 180 bytes.
+The schema, vectors, and checker are internally consistent. The profile remains
+a freeze candidate. Numeric Comparison, bond replacement and reconnect, ATT MTU
+498, DLE, 495/496-byte boundaries, disconnect recovery, and on-air
+interoperability have not yet been validated on firmware and a mobile client.
 
-## Verification
-
-```sh
-python3 -m pip install -r requirements.txt
-python3 -m tooling.check
-python3 -O -m tooling.check --print-digest
-python3 -m unittest discover -s tests -v
-python3 -O -m unittest discover -s tests -v
-python3 -m compileall -q tooling tests
-git diff --check
-```
-
-The repository remains a `VERSION=1.0.0` freeze candidate. A clean immutable
-commit, independent review, and explicit authorization are required before a
-`v1.0.0` tag or push. Passing these checks proves the contract source, vectors,
-checker, and CI are self-consistent; it does not prove firmware, mobile-client,
-BLE controller, DLE, or on-air interoperability.
+[bluetooth-sm]: https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core_v6.3/out/en/host/security-manager-specification.html

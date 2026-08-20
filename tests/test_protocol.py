@@ -36,24 +36,21 @@ class ProtocolSourceTest(unittest.TestCase):
         validate_version(self.protocol)
         validate_vectors(self.protocol, self.vectors)
 
-    def test_duplicate_yaml_keys_are_rejected(self) -> None:
+    def test_duplicate_yaml_and_json_keys_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "duplicate.yaml"
-            path.write_text(
-                "schema_version: 1\nschema_version: 2\n",
-                encoding="utf-8",
+            yaml_path = Path(directory) / "duplicate.yaml"
+            yaml_path.write_text(
+                "schema_version: 1\nschema_version: 2\n", encoding="utf-8"
             )
-            self.assertEqual(contract_error_code(load_protocol, path),
+            self.assertEqual(contract_error_code(load_protocol, yaml_path),
                              "DUPLICATE_KEY")
 
-    def test_duplicate_json_keys_are_rejected(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "duplicate.json"
-            path.write_text(
-                '{"format_version": 2, "format_version": 3}',
+            json_path = Path(directory) / "duplicate.json"
+            json_path.write_text(
+                '{"format_version": 3, "format_version": 4}',
                 encoding="utf-8",
             )
-            self.assertEqual(contract_error_code(load_vectors, path),
+            self.assertEqual(contract_error_code(load_vectors, json_path),
                              "DUPLICATE_KEY")
 
     def test_non_standard_json_constants_are_rejected(self) -> None:
@@ -62,49 +59,7 @@ class ProtocolSourceTest(unittest.TestCase):
             path.write_text('{"format_version": NaN}', encoding="utf-8")
             self.assertEqual(contract_error_code(load_vectors, path), "LOAD")
 
-    def test_unknown_and_missing_fields_are_distinct(self) -> None:
-        missing = copy.deepcopy(self.protocol)
-        del missing["profile"]["name"]
-        self.assertEqual(contract_error_code(validate_protocol, missing),
-                         "MISSING_FIELD")
-
-        unknown = copy.deepcopy(self.protocol)
-        unknown["profile"]["legacy"] = True
-        self.assertEqual(contract_error_code(validate_protocol, unknown),
-                         "UNKNOWN_FIELD")
-
-    def test_malformed_shapes_raise_contract_errors(self) -> None:
-        bad_status = copy.deepcopy(self.protocol)
-        bad_status["commands"][0]["allowed_statuses"][0] = {}
-        bad_enum = copy.deepcopy(self.protocol)
-        bad_enum["types"]["scan_network"]["fields"][1]["enum"] = {}
-        mutations = [
-            [],
-            {"schema_version": 1},
-            {**self.protocol, "commands": [None]},
-            bad_status,
-            bad_enum,
-        ]
-        for mutation in mutations:
-            with self.subTest(mutation=type(mutation).__name__):
-                code = contract_error_code(validate_protocol, mutation)
-                self.assertIn(code, {
-                    "TYPE", "MISSING_FIELD", "UNKNOWN_FIELD",
-                })
-
-        malformed_message = {
-            "id": "malformed",
-            "kind": [],
-            "status": None,
-            "hex": "",
-        }
-        self.assertEqual(
-            contract_error_code(validate_message, self.protocol,
-                                malformed_message),
-            "TYPE",
-        )
-
-    def test_version_file_is_exact(self) -> None:
+    def test_version_file_requires_one_newline(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "VERSION"
             path.write_text("1.0.0", encoding="ascii")
@@ -113,78 +68,70 @@ class ProtocolSourceTest(unittest.TestCase):
                 "VERSION",
             )
 
-    def test_uuid_att_octets_are_full_little_endian(self) -> None:
+    def test_uuid_octets_are_full_little_endian(self) -> None:
         gatt = self.protocol["protocol"]["gatt"]
-        definitions = [
-            gatt["service"],
-            gatt["characteristics"]["command_rx"],
-            gatt["characteristics"]["server_tx"],
-        ]
+        definitions = [gatt["service"], *gatt["characteristics"].values()]
         for definition in definitions:
             with self.subTest(uuid=definition["uuid"]):
                 expected = uuid.UUID(definition["uuid"]).bytes[::-1].hex()
                 self.assertEqual(definition["att_octets"], expected)
 
-    def test_gatt_procedures_and_att_errors_are_fixed(self) -> None:
-        gatt = self.protocol["protocol"]["gatt"]
-        command_rx = gatt["characteristics"]["command_rx"]
-        server_tx = gatt["characteristics"]["server_tx"]
-        self.assertEqual(command_rx["write_procedure"], "request")
-        self.assertEqual(server_tx["cccd_uuid"], 0x2902)
-        self.assertIs(server_tx["cccd_write_encrypted"], True)
-        self.assertEqual(server_tx["indication_enable_value_le"], "0200")
-        errors = self.protocol["protocol"]["att_errors"]
-        self.assertEqual({
-            name: errors[name] for name in (
-                "insufficient_encryption",
-                "invalid_attribute_value_length",
-                "value_not_allowed",
-                "cccd_improperly_configured",
-                "procedure_already_in_progress",
-            )
-        }, {
-            "insufficient_encryption": 0x0f,
-            "invalid_attribute_value_length": 0x0d,
-            "value_not_allowed": 0x13,
-            "cccd_improperly_configured": 0xfd,
-            "procedure_already_in_progress": 0xfe,
-        })
-
-    def test_transport_math_and_boundaries(self) -> None:
-        transport = self.protocol["protocol"]["transport"]
-        self.assertEqual(transport["att_pdu_bytes"], 498)
-        self.assertEqual(transport["l2cap_sdu_bytes"], 498)
-        self.assertEqual(transport["l2cap_pdu_bytes"], 502)
+    def test_duplicate_gatt_uuid_is_rejected(self) -> None:
+        candidate = copy.deepcopy(self.protocol)
+        service = candidate["protocol"]["gatt"]["service"]
+        command = candidate["protocol"]["gatt"]["characteristics"]["command_rx"]
+        command["uuid"] = service["uuid"]
+        command["att_octets"] = service["att_octets"]
         self.assertEqual(
-            transport["l2cap_pdu_bytes"],
-            transport["link_layer_payload_bytes"] *
-            transport["link_layer_payloads_for_full_l2cap_pdu"],
+            contract_error_code(validate_protocol, candidate), "DUPLICATE_ID"
         )
-        validate_att_value_length(self.protocol, 495)
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["commands"][1]["id"] = candidate["commands"][0]["id"]
         self.assertEqual(
-            contract_error_code(validate_att_value_length,
-                                self.protocol, 496),
-            "ATT_VALUE_TOO_LONG",
+            contract_error_code(validate_protocol, candidate), "DUPLICATE_ID"
         )
 
-    def test_get_info_fits_default_att_mtu(self) -> None:
-        case = next(
-            item for item in self.vectors["messages"]["valid"]
-            if item["id"] == "get-info-response"
+        candidate = copy.deepcopy(self.protocol)
+        status_names = list(candidate["status_codes"])
+        candidate["status_codes"][status_names[1]] = (
+            candidate["status_codes"][status_names[0]]
         )
-        encoded = bytes.fromhex(case["hex"])
-        self.assertEqual(len(encoded), 11)
-        self.assertLessEqual(
-            len(encoded),
-            self.protocol["protocol"]["transport"]["minimum_att_mtu"] - 3,
+        self.assertEqual(
+            contract_error_code(validate_protocol, candidate), "DUPLICATE_ID"
         )
 
-    def test_maximum_scan_event_is_180_bytes(self) -> None:
-        case = next(
-            item for item in self.vectors["messages"]["valid"]
-            if item["id"] == "scan-complete-max"
+    def test_checker_does_not_copy_profile_identity_or_uuid(self) -> None:
+        checker = (ROOT / "tooling/check.py").read_text(encoding="utf-8")
+        self.assertNotIn(self.protocol["profile"]["name"], checker)
+        self.assertNotIn(
+            self.protocol["protocol"]["gatt"]["service"]["uuid"], checker
         )
-        self.assertEqual(len(bytes.fromhex(case["hex"])), 180)
+        registry_names = {
+            *(item["name"] for item in self.protocol["commands"]),
+            *(item["name"] for item in self.protocol["events"]),
+            *self.protocol["status_codes"],
+            *(name for values in self.protocol["enums"].values()
+              for name in values),
+        }
+        for name in registry_names:
+            with self.subTest(registry=name):
+                self.assertNotIn(f'"{name}"', checker)
+                self.assertNotIn(f"'{name}'", checker)
+
+        def vector_ids(value):
+            if isinstance(value, dict):
+                if isinstance(value.get("id"), str):
+                    yield value["id"]
+                for child in value.values():
+                    yield from vector_ids(child)
+            elif isinstance(value, list):
+                for child in value:
+                    yield from vector_ids(child)
+
+        for vector_id in vector_ids(self.vectors):
+            with self.subTest(vector=vector_id):
+                self.assertNotIn(vector_id, checker)
 
     def test_digest_is_format_independent_and_semantic(self) -> None:
         digest = normalized_digest(self.protocol, self.vectors)
@@ -192,20 +139,305 @@ class ProtocolSourceTest(unittest.TestCase):
             (ROOT / "protocol.yaml").read_text(encoding="utf-8")
             .replace("\n", "\r\n")
         )
-        vectors_reordered = json.loads(
-            json.dumps(self.vectors, sort_keys=True)
-        )
+        reordered = json.loads(json.dumps(self.vectors, sort_keys=True))
         self.assertEqual(
-            digest,
-            normalized_digest(protocol_crlf, vectors_reordered),
+            digest, normalized_digest(protocol_crlf, reordered)
         )
-
         mutated = copy.deepcopy(self.vectors)
         mutated["messages"]["valid"][0]["request_id"] = 99
-        self.assertNotEqual(digest, normalized_digest(self.protocol, mutated))
+        self.assertNotEqual(
+            digest, normalized_digest(self.protocol, mutated)
+        )
+
+    def test_missing_command_field_is_a_contract_error(self) -> None:
+        candidate = copy.deepcopy(self.protocol)
+        del candidate["commands"][0]["asynchronous"]
+        self.assertEqual(
+            contract_error_code(validate_protocol, candidate),
+            "MISSING_FIELD",
+        )
+
+        candidate = copy.deepcopy(self.protocol)
+        del candidate["wire_rules"]["operation_lifecycle"][
+            "accepted_response_field"
+        ]
+        self.assertEqual(
+            contract_error_code(validate_protocol, candidate),
+            "MISSING_FIELD",
+        )
 
 
-class MessageVectorTest(unittest.TestCase):
+class SecurityAndTransportTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.protocol = load_protocol()
+
+    def assert_mutation_fails(self, mutation, expected: str) -> None:
+        candidate = copy.deepcopy(self.protocol)
+        mutation(candidate)
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         expected)
+
+    def test_security_downgrades_are_rejected(self) -> None:
+        mutations = [
+            lambda p: p["protocol"]["security"].__setitem__("mitm", False),
+            lambda p: p["protocol"]["security"].__setitem__("bonding", False),
+            lambda p: p["protocol"]["security"].__setitem__("max_bonds", 2),
+            lambda p: p["protocol"]["security"].__setitem__(
+                "io_capability", "no_input_no_output"
+            ),
+            lambda p: p["protocol"]["security"].__setitem__(
+                "association_model", "just_works"
+            ),
+            lambda p: p["protocol"]["security"].__setitem__(
+                "encryption_key_bytes", 15
+            ),
+            lambda p: p["protocol"]["security"].__setitem__(
+                "bond_replacement_candidate", "persistent"
+            ),
+            lambda p: p["protocol"]["security"][
+                "bond_replacement_commit_requires"
+            ].remove("candidate_persisted"),
+            lambda p: p["protocol"]["security"].__setitem__(
+                "bond_replacement_candidate_counts_toward_persistent_limit",
+                True,
+            ),
+            lambda p: p["protocol"]["security"].__setitem__(
+                "bond_replacement_failure_retains_old", False
+            ),
+            lambda p: p["protocol"]["security"].__setitem__(
+                "bond_replacement_precommit_power_loss_retains_old", False
+            ),
+            lambda p: p["protocol"]["gatt"]["characteristics"][
+                "command_rx"
+            ].__setitem__("authenticated", False),
+        ]
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                self.assert_mutation_fails(mutation, "SECURITY")
+
+    def test_mtu_math_and_att_boundaries(self) -> None:
+        transport = self.protocol["protocol"]["transport"]
+        self.assertEqual(transport["required_att_mtu"], 498)
+        self.assertEqual(transport["maximum_att_value_bytes"], 495)
+        self.assertEqual(transport["l2cap_pdu_bytes"], 502)
+        validate_att_value_length(self.protocol, 495)
+        self.assertEqual(
+            contract_error_code(validate_att_value_length,
+                                self.protocol, 496),
+            "ATT_VALUE_TOO_LONG",
+        )
+
+    def test_inconsistent_transport_math_is_rejected(self) -> None:
+        mutations = [
+            lambda p: p["protocol"]["transport"].__setitem__(
+                "required_att_mtu", 497
+            ),
+            lambda p: p["protocol"]["transport"].__setitem__(
+                "maximum_att_value_bytes", 496
+            ),
+            lambda p: p["protocol"]["limits"].__setitem__(
+                "maximum_scan_event_bytes", 180
+            ),
+        ]
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                self.assert_mutation_fails(mutation, "TRANSPORT_MATH")
+
+    def test_transport_identity_and_recovery_regressions_are_rejected(self) -> None:
+        mutations = [
+            (lambda p: p["protocol"]["transport"].__setitem__(
+                "application_error_opcode", 0x81
+            ), "OPERATION"),
+            (lambda p: p["protocol"]["transport"][
+                "reserved_request_opcodes"
+            ].remove(0x70), "DUPLICATE_ID"),
+            (lambda p: p["protocol"]["transport"].__setitem__(
+                "operation_id_reuse_within_boot", True
+            ), "OPERATION"),
+            (lambda p: p["protocol"]["transport"]["low_mtu"].__setitem__(
+                "recovery_requires_full_mtu", False
+            ), "OPERATION"),
+        ]
+        for mutation, expected in mutations:
+            with self.subTest(expected=expected):
+                self.assert_mutation_fails(mutation, expected)
+
+    def test_precedence_lists_are_complete_contract_errors(self) -> None:
+        for key, expected in (("gatt_precedence", "SECURITY"),
+                              ("application_precedence", "OPERATION")):
+            candidate = copy.deepcopy(self.protocol)
+            candidate["protocol"]["att_errors"][key].pop()
+            with self.subTest(key=key):
+                self.assertEqual(
+                    contract_error_code(validate_protocol, candidate), expected
+                )
+
+    def test_field_rule_and_low_mtu_links_are_enforced(self) -> None:
+        mutations = [
+            lambda p: p["protocol"]["limits"].__setitem__(
+                "max_scan_networks", 4
+            ),
+            lambda p: p["types"]["scan_network"]["fields"][0].__setitem__(
+                "min_bytes", 0
+            ),
+            lambda p: p["wire_rules"]["text"]["text_rules"][
+                "password"
+            ].__setitem__("min_octet", 0x21),
+            lambda p: next(command for command in p["commands"]
+                           if command["name"] == "GET_STATUS").__setitem__(
+                               "requires_full_mtu", False
+                           ),
+            lambda p: next(command for command in p["commands"]
+                           if command.get("response_semantic") ==
+                           "link_info").__setitem__(
+                               "requires_full_mtu", True
+                           ),
+        ]
+        for mutation in mutations:
+            candidate = copy.deepcopy(self.protocol)
+            mutation(candidate)
+            with self.subTest(mutation=mutation):
+                self.assertIn(
+                    contract_error_code(validate_protocol, candidate),
+                    {"STATUS", "VALUE", "TRANSPORT_MATH"},
+                )
+
+    def test_async_operation_id_and_terminal_event_links_are_enforced(self) -> None:
+        candidate = copy.deepcopy(self.protocol)
+        scan = next(command for command in candidate["commands"]
+                    if command["name"] == "SCAN")
+        scan["response"][0]["nonzero"] = False
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "OPERATION")
+
+        candidate = copy.deepcopy(self.protocol)
+        event = next(event for event in candidate["events"]
+                     if event["name"] == "SCAN_COMPLETE")
+        event["payload"][0]["nonzero"] = False
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "OPERATION")
+
+        candidate = copy.deepcopy(self.protocol)
+        scan = next(command for command in candidate["commands"]
+                    if command["name"] == "SCAN")
+        scan["completion_event"] = next(
+            event["name"] for event in candidate["events"]
+            if event.get("payload_semantic") == "operation_result"
+        )
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "OPERATION")
+
+        candidate = copy.deepcopy(self.protocol)
+        scan = next(command for command in candidate["commands"]
+                    if command["name"] == "SCAN")
+        scan["allowed_statuses"].remove("INTERNAL")
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "STATUS")
+
+        candidate = copy.deepcopy(self.protocol)
+        operation_query = next(
+            command for command in candidate["commands"]
+            if command.get("response_semantic") == "operation_record"
+        )
+        operation_query["allowed_statuses"].remove("INVALID_ARGUMENT")
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "STATUS")
+
+    def test_declared_maximum_message_sizes_are_current(self) -> None:
+        limits = self.protocol["protocol"]["limits"]
+        self.assertEqual(limits["maximum_get_info_response_bytes"], 11)
+        self.assertEqual(limits["maximum_scan_event_bytes"], 183)
+        self.assertEqual(limits["maximum_get_operation_response_bytes"], 186)
+
+
+class ContractBoundaryTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.protocol = load_protocol()
+        self.vectors = load_vectors()
+
+    def test_wifi_implementation_policy_keys_are_not_normative(self) -> None:
+        rules = self.protocol["wire_rules"]
+        self.assertNotIn("admission", rules)
+        self.assertNotIn("scan", rules)
+        self.assertNotIn("failure_rollback_required",
+                         rules["operation_result"])
+        self.assertNotIn("intermediate_updates", rules["wifi_status"])
+
+    def test_policy_fields_cannot_be_added_to_schema(self) -> None:
+        mutations = [
+            lambda p: p["wire_rules"].__setitem__(
+                "automatic_reconnect", {"enabled": True}
+            ),
+            lambda p: p["wire_rules"]["scan_result"].__setitem__(
+                "sort", ["rssi_descending"]
+            ),
+            lambda p: p["wire_rules"]["operation_result"].__setitem__(
+                "failure_rollback_required", False
+            ),
+        ]
+        for mutation in mutations:
+            candidate = copy.deepcopy(self.protocol)
+            mutation(candidate)
+            with self.subTest(mutation=mutation):
+                self.assertEqual(
+                    contract_error_code(validate_protocol, candidate),
+                    "UNKNOWN_FIELD",
+                )
+
+    def test_operation_lifecycle_regressions_are_rejected(self) -> None:
+        mutations = [
+            lambda p: p["wire_rules"]["operation_lifecycle"].__setitem__(
+                "terminal_event_replay", True
+            ),
+            lambda p: p["wire_rules"]["operation_lifecycle"].__setitem__(
+                "disconnect_clears_record", True
+            ),
+            lambda p: p["wire_rules"]["operation_lifecycle"].__setitem__(
+                "ack_terminal_clears_record", False
+            ),
+            lambda p: p["wire_rules"]["operation_lifecycle"].__setitem__(
+                "must_reach_terminal", False
+            ),
+            lambda p: p["wire_rules"]["operation_lifecycle"].__setitem__(
+                "ack_requires_terminal_event_confirmation", False
+            ),
+            lambda p: p["wire_rules"]["operation_lifecycle"].__setitem__(
+                "ack_clears_after_response_confirmation", False
+            ),
+            lambda p: p["wire_rules"]["operation_record"].__setitem__(
+                "failed_result_count", 1
+            ),
+            lambda p: p["wire_rules"]["operation_record"].__setitem__(
+                "scan_results_phase",
+                p["wire_rules"]["operation_record"]["failed_phase"],
+            ),
+        ]
+        for mutation in mutations:
+            candidate = copy.deepcopy(self.protocol)
+            mutation(candidate)
+            with self.subTest(mutation=mutation):
+                self.assertEqual(
+                    contract_error_code(validate_protocol, candidate),
+                    "OPERATION",
+                )
+
+    def test_operation_failure_matrix_and_wifi_edges_are_linked(self) -> None:
+        candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["operation_result"]["failure_matrix"][
+            "SET_CREDENTIALS"
+        ].append("AUTHENTICATION")
+        self.assertEqual(contract_error_code(validate_vectors, candidate,
+                                             self.vectors), "EXPECTATION")
+
+        candidate = copy.deepcopy(self.protocol)
+        connect = next(command for command in candidate["commands"]
+                       if command["name"] == "CONNECT")
+        connect["allowed_statuses"].remove("NOT_FOUND")
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "STATUS")
+
+
+class VectorTest(unittest.TestCase):
     def setUp(self) -> None:
         self.protocol = load_protocol()
         self.vectors = load_vectors()
@@ -215,29 +447,13 @@ class MessageVectorTest(unittest.TestCase):
             with self.subTest(case=case["id"]):
                 validate_message(self.protocol, case)
 
-    def test_vector_unknown_missing_and_wrong_type_are_rejected(self) -> None:
-        missing = copy.deepcopy(self.vectors)
-        del missing["messages"]["valid"][0]["hex"]
-        self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, missing),
-            "MISSING_FIELD",
-        )
+    def test_application_error_envelope_decodes_offending_opcode(self) -> None:
+        case = next(item for item in self.vectors["messages"]["valid"]
+                    if item["kind"] == "application_error")
+        self.assertEqual(validate_message(self.protocol, case),
+                         {"offending_opcode": 0x70})
 
-        unknown = copy.deepcopy(self.vectors)
-        unknown["messages"]["valid"][0]["legacy"] = True
-        self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, unknown),
-            "UNKNOWN_FIELD",
-        )
-
-        wrong_type = copy.deepcopy(self.vectors)
-        wrong_type["transaction_cases"][0]["steps"][0]["action"] = []
-        self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, wrong_type),
-            "TYPE",
-        )
-
-    def test_every_negative_message_matches_its_error_category(self) -> None:
+    def test_every_negative_message_has_the_expected_error(self) -> None:
         for case in self.vectors["messages"]["invalid"]:
             normal = dict(case)
             expected = normal.pop("expected_error")
@@ -249,179 +465,211 @@ class MessageVectorTest(unittest.TestCase):
                     expected,
                 )
 
-    def test_negative_intent_cannot_be_replaced_by_unrelated_failure(self) -> None:
-        mutated = copy.deepcopy(self.vectors)
-        for case in mutated["messages"]["invalid"]:
-            case["hex"] = ""
+    def test_wrong_negative_expectation_is_rejected(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        candidate["messages"]["invalid"][0]["expected_error"] = "UTF8"
         self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, mutated),
+            contract_error_code(validate_vectors, self.protocol, candidate),
             "EXPECTATION",
         )
 
-    def test_wrong_expected_error_is_rejected(self) -> None:
-        mutated = copy.deepcopy(self.vectors)
-        mutated["messages"]["invalid"][0]["expected_error"] = "UTF8"
+    def test_command_and_event_vector_coverage_is_enforced(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        candidate["messages"]["valid"] = [
+            item for item in candidate["messages"]["valid"]
+            if item["id"] != "ack-operation-request"
+        ]
         self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, mutated),
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "COVERAGE",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        candidate["messages"]["valid"] = [
+            item for item in candidate["messages"]["valid"]
+            if item["id"] != "unknown-opcode-error"
+        ]
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "COVERAGE",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        candidate["messages"]["valid"] = [
+            item for item in candidate["messages"]["valid"]
+            if item["id"] != "get-operation-connect-failed"
+        ]
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "COVERAGE",
+        )
+
+    def test_disconnect_recovery_expectations_are_checked(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        scenario = candidate["operation_cases"][0]
+        active_ack = next(
+            step for step in scenario["steps"]
+            if step["action"] == "ack" and step["operation_id"] == 1
+        )
+        active_ack["expect"] = "OK"
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
             "EXPECTATION",
         )
 
-    def test_status_matrix_coverage_is_enforced(self) -> None:
-        mutated = copy.deepcopy(self.vectors)
-        mutated["messages"]["valid"] = [
-            case for case in mutated["messages"]["valid"]
-            if case["id"] != "wifi-status-error-authentication"
-        ]
+    def test_operation_recovery_scenario_coverage_is_enforced(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        candidate["operation_cases"] = candidate["operation_cases"][1:]
         self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, mutated),
+            contract_error_code(validate_vectors, self.protocol, candidate),
             "COVERAGE",
         )
 
-    def test_operation_result_coverage_is_enforced(self) -> None:
-        mutated = copy.deepcopy(self.vectors)
-        mutated["messages"]["valid"] = [
-            case for case in mutated["messages"]["valid"]
-            if case["id"] != "operation-connect-authentication"
-        ]
+    def test_routing_and_result_matrix_expectations_are_checked(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        candidate["routing_cases"][0]["expect"] = "ATT:value_not_allowed"
         self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, mutated),
-            "COVERAGE",
-        )
-
-    def test_allowed_response_status_coverage_is_enforced(self) -> None:
-        mutated = copy.deepcopy(self.vectors)
-        mutated["messages"]["valid"] = [
-            case for case in mutated["messages"]["valid"]
-            if case["id"] != "connect-status-not-found"
-        ]
-        self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, mutated),
-            "COVERAGE",
-        )
-
-    def test_transaction_scenario_coverage_is_enforced(self) -> None:
-        mutated = copy.deepcopy(self.vectors)
-        mutated["transaction_cases"] = [
-            case for case in mutated["transaction_cases"]
-            if case["id"] != "disconnect-no-replay"
-        ]
-        self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, mutated),
-            "COVERAGE",
-        )
-
-    def test_operation_postcondition_coverage_is_enforced(self) -> None:
-        mutated = copy.deepcopy(self.vectors)
-        mutated["transaction_cases"] = [
-            case for case in mutated["transaction_cases"]
-            if case["id"] != "connect-success-postcondition"
-        ]
-        self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, mutated),
-            "COVERAGE",
-        )
-
-    def test_transaction_expectations_are_checked(self) -> None:
-        mutated = copy.deepcopy(self.vectors)
-        case = next(
-            item for item in mutated["transaction_cases"]
-            if item["id"] == "get-info-at-mtu23"
-        )
-        case["steps"][0]["expect"] = "response:MTU_TOO_SMALL"
-        self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, mutated),
+            contract_error_code(validate_vectors, self.protocol, candidate),
             "EXPECTATION",
         )
 
+        candidate = copy.deepcopy(self.vectors)
+        candidate["result_matrix_cases"][0]["allowed_failures"].pop()
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
 
-class ProtocolMutationTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.protocol = load_protocol()
-        self.vectors = load_vectors()
+        candidate = copy.deepcopy(self.vectors)
+        candidate["routing_cases"] = [
+            case for case in candidate["routing_cases"]
+            if case["id"] != "get-operation-low-mtu"
+        ]
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "COVERAGE",
+        )
 
-    def assert_protocol_mutation_fails(self, mutation) -> None:
-        candidate = copy.deepcopy(self.protocol)
-        mutation(candidate)
-        try:
-            validate_protocol(candidate)
-            validate_vectors(candidate, self.vectors)
-        except ContractError as exc:
-            code = exc.code
-        else:
-            self.fail("protocol mutation was accepted")
-        self.assertIn(code, {
-            "VALUE", "TRANSPORT_MATH", "UNKNOWN_FIELD", "MISSING_FIELD",
-            "WIRE_TYPE", "ENUM", "STATUS", "UUID", "LENGTH", "COVERAGE",
-            "EXPECTATION", "TYPE",
+    def test_ack_is_not_committed_before_response_confirmation(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        scenario = candidate["operation_cases"][0]
+        scenario["steps"] = [
+            step for step in scenario["steps"]
+            if step["action"] != "confirm_ack"
+        ]
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+    def test_duplicate_operation_id_and_terminal_event_are_rejected(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        scenario = candidate["operation_cases"][0]
+        scenario["steps"].extend([
+            {"action": "accept", "operation": "SCAN", "operation_id": 1,
+             "expect": "ACCEPTED"},
+        ])
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "OPERATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = candidate["operation_cases"][0]
+        confirm_index = next(
+            index for index, step in enumerate(scenario["steps"])
+            if step["action"] == "confirm_terminal"
+        )
+        scenario["steps"].insert(confirm_index + 1, {
+            "action": "emit_terminal", "operation_id": 1,
+            "operation": "CONNECT", "event": "OPERATION_COMPLETE",
         })
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
 
-    def test_transport_mutations_are_rejected(self) -> None:
-        mutations = [
-            lambda p: p["protocol"]["transport"].__setitem__(
-                "required_att_mtu", 497
-            ),
-            lambda p: p["protocol"]["transport"].__setitem__(
-                "l2cap_sdu_bytes", 502
-            ),
-            lambda p: p["protocol"]["transport"].__setitem__(
-                "maximum_att_value_bytes", 496
-            ),
-            lambda p: p["protocol"]["gatt"]["characteristics"][
-                "command_rx"
-            ].__setitem__("max_value_bytes", 495.0),
-            lambda p: p["protocol"]["gatt"]["characteristics"][
-                "server_tx"
-            ].__setitem__("properties", ["notify"]),
-            lambda p: p["protocol"]["gatt"]["characteristics"][
-                "command_rx"
-            ].__setitem__("write_procedure", "command"),
-        ]
-        for mutation in mutations:
-            with self.subTest(mutation=mutation):
-                self.assert_protocol_mutation_fails(mutation)
+        candidate = copy.deepcopy(self.vectors)
+        scenario = candidate["operation_cases"][0]
+        terminal = next(step for step in scenario["steps"]
+                        if step["action"] == "emit_terminal")
+        terminal["operation_id"] = 2
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
 
-    def test_layout_and_status_mutations_are_rejected(self) -> None:
-        mutations = [
-            lambda p: p["commands"][0]["response"].append({
-                "name": "legacy", "wire": "u8",
-            }),
-            lambda p: p["commands"][3]["request"][0].__setitem__(
-                "max_bytes", 31
-            ),
-            lambda p: p["types"]["scan_network"]["fields"][2].__setitem__(
-                "max", 1
-            ),
-            lambda p: p["commands"][4]["allowed_statuses"].append("STORAGE"),
-            lambda p: p["events"][2].__setitem__("id", 4),
-            lambda p: p["wire_types"]["i8"].__setitem__(
-                "encoding", "sign_magnitude"
-            ),
-        ]
-        for mutation in mutations:
-            with self.subTest(mutation=mutation):
-                self.assert_protocol_mutation_fails(mutation)
+    def test_operation_scenario_recovery_boundaries_are_enforced(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        scenario = candidate["operation_cases"][0]
+        rejected = next(
+            step for step in scenario["steps"]
+            if step["action"] == "accept" and step["expect"] == "BUSY"
+        )
+        rejected["operation_id"] = 2
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "OPERATION",
+        )
 
-    def test_state_and_operation_matrix_mutations_are_rejected(self) -> None:
-        mutations = [
-            lambda p: p["wire_rules"]["wifi_status"]["state_matrix"][
-                "CONNECTED"
-            ].append("LINK_LOST"),
-            lambda p: p["wire_rules"]["operation_completion"][
-                "failure_matrix"
-            ]["SET_CREDENTIALS"].append("AUTHENTICATION"),
-            lambda p: p["wire_rules"]["sequencing"].__setitem__(
-                "ble_disconnect_completion_replay", True
-            ),
-            lambda p: p["wire_rules"]["operation_completion"][
-                "success_postconditions"
-            ].__setitem__("FORGET", "profile_absent"),
-            lambda p: p["wire_rules"]["admission"][
-                "service_unavailable_bypass"
-            ].append("SET_CREDENTIALS"),
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] ==
+            "remaining-operation-successes-and-event-disconnect"
+        )
+        complete_index = next(
+            index for index, step in enumerate(scenario["steps"])
+            if step["action"] == "complete" and step["operation_id"] == 12
+        )
+        del scenario["steps"][complete_index + 1:complete_index + 3]
+        scenario["steps"].insert(complete_index + 1, {
+            "action": "query", "expect": "SUCCEEDED", "operation_id": 12,
+            "operation": "DISCONNECT", "failure": "NONE",
+        })
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] == "disconnect-completion-recovery-and-ack"
+        )
+        ack_indexes = [
+            index for index, step in enumerate(scenario["steps"])
+            if step["action"] == "ack" and step["expect"] == "OK"
         ]
-        for mutation in mutations:
-            with self.subTest(mutation=mutation):
-                self.assert_protocol_mutation_fails(mutation)
+        second_ack = ack_indexes[1]
+        del scenario["steps"][second_ack - 2:second_ack]
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(item for item in candidate["operation_cases"]
+                        if item["id"] == "id-exhaustion-and-reboot")
+        scenario["steps"][0]["operation_id"] = (1 << 32) - 2
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(item for item in candidate["operation_cases"]
+                        if item["id"] == "id-exhaustion-and-reboot")
+        connect_index = next(
+            index for index, step in enumerate(scenario["steps"])
+            if step["action"] == "accept" and
+            step["operation"] == "CONNECT"
+        )
+        del scenario["steps"][connect_index:connect_index + 4]
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "COVERAGE",
+        )
 
 
 if __name__ == "__main__":
