@@ -101,28 +101,13 @@ class ProtocolSourceTest(unittest.TestCase):
             contract_error_code(validate_protocol, candidate), "DUPLICATE_ID"
         )
 
-    def test_checker_does_not_copy_profile_identity_or_uuid(self) -> None:
+    def test_checker_freezes_profile_identity_and_uuid(self) -> None:
         checker = (ROOT / "tooling/check.py").read_text(encoding="utf-8")
-        self.assertNotIn(self.protocol["profile"]["name"], checker)
-        self.assertNotIn(
+        self.assertIn(self.protocol["profile"]["name"], checker)
+        self.assertIn(
             self.protocol["protocol"]["gatt"]["service"]["uuid"], checker
         )
-        registry_names = {
-            *(item["name"] for item in self.protocol["commands"]),
-            *(item["name"] for item in self.protocol["events"]),
-            *self.protocol["status_codes"],
-            *(name for values in self.protocol["enums"].values()
-              for name in values),
-        }
-        semantic_enum_names = set(
-            self.protocol["wire_rules"]["scan_result"]["representable_security"]
-        )
-        for name in registry_names:
-            with self.subTest(registry=name):
-                if name in semantic_enum_names:
-                    continue
-                self.assertNotIn(f'"{name}"', checker)
-                self.assertNotIn(f"'{name}'", checker)
+        self.assertIn("FROZEN_V1", checker)
 
         def vector_ids(value):
             if isinstance(value, dict):
@@ -137,6 +122,51 @@ class ProtocolSourceTest(unittest.TestCase):
         for vector_id in vector_ids(self.vectors):
             with self.subTest(vector=vector_id):
                 self.assertNotIn(vector_id, checker)
+
+        mutations = [
+            lambda p: p.__setitem__("schema_version", 2),
+            lambda p: p["profile"].__setitem__("name", "device-link/v1-alt"),
+            lambda p: p["profile"].__setitem__("version", "1.0.1"),
+            lambda p: p["protocol"]["gatt"]["service"].__setitem__(
+                "uuid", "8f2a8c10-65f6-4f44-9c04-9c4c2f7b6a32"
+            ),
+            lambda p: p["protocol"]["gatt"]["characteristics"][
+                "command_rx"
+            ].__setitem__("properties", ["write_without_response"]),
+            lambda p: p["protocol"]["security"].__setitem__("mitm", False),
+            lambda p: p["protocol"]["transport"].__setitem__(
+                "required_att_mtu", 497
+            ),
+            lambda p: p["protocol"]["transport"].__setitem__(
+                "event_marker", 0xf1
+            ),
+            lambda p: p["status_codes"].__setitem__("FUTURE", 10),
+            lambda p: p["enums"]["wifi_security"].__setitem__("OPEN", 2),
+            lambda p: p["enums"].__setitem__("future_enum", {"VALUE": 1}),
+            lambda p: p["commands"][0].__setitem__("id", 10),
+            lambda p: p["events"][0].__setitem__("id", 4),
+            lambda p: p["protocol"]["att_errors"].__setitem__(
+                "profile_tx_indication_pending", 0xfc
+            ),
+            lambda p: p["wire_rules"]["operation_lifecycle"].__setitem__(
+                "accepted_commands", ["SCAN"]
+            ),
+        ]
+        for mutation in mutations:
+            candidate = copy.deepcopy(self.protocol)
+            mutation(candidate)
+            with self.subTest(mutation=mutation):
+                self.assertIn(
+                    contract_error_code(validate_protocol, candidate),
+                    {"VERSION", "UUID", "TRANSPORT_MATH", "ENUM", "VALUE",
+                     "DUPLICATE_ID", "SECURITY", "OPERATION"},
+                )
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["profile"]["version"] = "1.0.1"
+        with self.assertRaises(ContractError) as context:
+            validate_protocol(candidate)
+        self.assertIn("new profile/version", str(context.exception))
 
     def test_digest_is_format_independent_and_semantic(self) -> None:
         digest = normalized_digest(self.protocol, self.vectors)
@@ -473,6 +503,21 @@ class ContractBoundaryTest(unittest.TestCase):
                          "VALUE")
 
         candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["scan_result"]["invalid_ssid_policy"] = "emit"
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "VALUE")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["scan_result"]["duplicate_ssid_policy"] = "drop"
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "VALUE")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["wifi_status"]["snapshot_fields"] = ["state"]
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "VALUE")
+
+        candidate = copy.deepcopy(self.protocol)
         candidate["wire_rules"]["scan_result"]["representable_security"][
             "PERSONAL"
         ] = ["WIFI_AUTH_WPA2_PSK"]
@@ -498,6 +543,20 @@ class ContractBoundaryTest(unittest.TestCase):
         candidate["wire_rules"]["operation_lifecycle"][
             "finite_termination_required"
         ] = False
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "OPERATION")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["operation_lifecycle"][
+            "reconnect_sequence"
+        ] = ["GET_STATUS", "GET_OPERATION", "ACK_OPERATION"]
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "OPERATION")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["sequencing"][
+            "terminal_event_record_correlation"
+        ] = "id_only"
         self.assertEqual(contract_error_code(validate_protocol, candidate),
                          "OPERATION")
 
@@ -700,10 +759,12 @@ class VectorTest(unittest.TestCase):
             index for index, step in enumerate(scenario["steps"])
             if step["action"] == "confirm_terminal"
         )
-        scenario["steps"].insert(confirm_index + 1, {
-            "action": "emit_terminal", "operation_id": 1,
-            "operation": "CONNECT", "event": "OPERATION_COMPLETE",
-        })
+        duplicate_terminal = copy.deepcopy(next(
+            step for step in scenario["steps"]
+            if step["action"] == "emit_terminal"
+        ))
+        duplicate_terminal["operation"] = "CONNECT"
+        scenario["steps"].insert(confirm_index + 1, duplicate_terminal)
         self.assertEqual(
             contract_error_code(validate_vectors, self.protocol, candidate),
             "EXPECTATION",
@@ -715,8 +776,11 @@ class VectorTest(unittest.TestCase):
             index for index, step in enumerate(scenario["steps"])
             if step["action"] == "emit_status"
         )
+        ordinary = next(step for step in scenario["steps"]
+                        if step["action"] == "emit_status")
         scenario["steps"].insert(status_index, {
-            "action": "queue_ordinary_status", "snapshot": "IDLE",
+            "action": "emit_ordinary_status",
+            "snapshot": copy.deepcopy(ordinary["snapshot"]),
         })
         self.assertEqual(
             contract_error_code(validate_vectors, self.protocol, candidate),
@@ -760,6 +824,7 @@ class VectorTest(unittest.TestCase):
         scenario["steps"].insert(complete_index + 1, {
             "action": "query", "expect": "SUCCEEDED", "operation_id": 12,
             "operation": "DISCONNECT", "failure": "NONE",
+            "count": 0, "networks": [],
         })
         self.assertEqual(
             contract_error_code(validate_vectors, self.protocol, candidate),
@@ -769,7 +834,7 @@ class VectorTest(unittest.TestCase):
         candidate = copy.deepcopy(self.vectors)
         scan_case = next(item for item in candidate["wifi_cases"]
                          if item["case"] == "scan_filtering")
-        scan_case["expect"]["filtered_ssids"].reverse()
+        scan_case["expect"]["filtered_records"].reverse()
         validate_vectors(self.protocol, candidate)
 
         candidate = copy.deepcopy(self.vectors)
@@ -814,7 +879,9 @@ class VectorTest(unittest.TestCase):
         candidate = copy.deepcopy(self.vectors)
         scenario = next(item for item in candidate["operation_cases"]
                         if item["id"] == "ordinary-status-coalesce-and-disconnect")
-        scenario["steps"][2]["snapshot"] = "IDLE"
+        scenario["steps"][2]["snapshot"] = {
+            "state": "IDLE", "failure": "NONE", "profile_ssid": "",
+        }
         self.assertEqual(
             contract_error_code(validate_vectors, self.protocol, candidate),
             "EXPECTATION",
@@ -834,7 +901,7 @@ class VectorTest(unittest.TestCase):
             item for item in candidate["wifi_cases"]
             if item["case"] == "scan_filtering_under_limit"
         )
-        scan_case["expect"]["count"] = 3
+        scan_case["expect"]["count"] = 2
         self.assertEqual(
             contract_error_code(validate_vectors, self.protocol, candidate),
             "EXPECTATION",
@@ -869,11 +936,199 @@ class VectorTest(unittest.TestCase):
             if step["action"] == "emit_terminal"
         )
         scenario["steps"].insert(terminal_index, {
-            "action": "emit_ordinary_status", "snapshot": "IDLE",
+            "action": "emit_ordinary_status",
+            "snapshot": {"state": "IDLE", "failure": "NONE",
+                         "profile_ssid": ""},
         })
         self.assertEqual(
             contract_error_code(validate_vectors, self.protocol, candidate),
             "EXPECTATION",
+        )
+
+    def test_scan_enum_filter_and_duplicate_record_rules(self) -> None:
+        candidate = copy.deepcopy(self.protocol)
+        candidate["enums"]["wifi_security"] = {"OPEN": 2, "PERSONAL": 1}
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "ENUM")
+
+        candidate = copy.deepcopy(self.vectors)
+        scan_case = next(item for item in candidate["wifi_cases"]
+                         if item["case"] == "scan_filtering_under_limit")
+        duplicate = copy.deepcopy(scan_case["expect"]["filtered_records"][0])
+        duplicate["rssi_dbm"] = -70
+        scan_case["expect"]["input"].append({
+            "ssid": "home", "authmode": "WIFI_AUTH_WPA2_PSK",
+            "rssi_dbm": -70,
+        })
+        scan_case["expect"]["filtered_records"].append(duplicate)
+        scan_case["expect"]["count"] += 1
+        validate_vectors(self.protocol, candidate)
+
+        candidate = copy.deepcopy(self.vectors)
+        scan_case = next(item for item in candidate["wifi_cases"]
+                         if item["case"] == "scan_filtering_under_limit")
+        scan_case["expect"]["filtered_records"].append({
+            "ssid": "legacy", "security": "OPEN", "rssi_dbm": -75,
+        })
+        scan_case["expect"]["count"] += 1
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scan_case = next(item for item in candidate["wifi_cases"]
+                         if item["case"] == "scan_filtering_under_limit")
+        del scan_case["expect"]["filtered_records"][-1]
+        scan_case["expect"]["count"] -= 1
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+    def test_scan_invalid_ssid_and_rssi_boundaries_are_rejected(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        scan_case = next(item for item in candidate["wifi_cases"]
+                         if item["case"] == "scan_filtering_under_limit")
+        scan_case["expect"]["filtered_records"][0]["rssi_dbm"] = -128
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "VALUE",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scan_case = next(item for item in candidate["wifi_cases"]
+                         if item["case"] == "scan_filtering_under_limit")
+        scan_case["expect"]["input"].append({
+            "ssid_hex": "ff", "authmode": "WIFI_AUTH_OPEN", "rssi_dbm": -10,
+        })
+        # The invalid raw SSID is filtered, so the existing result remains valid.
+        validate_vectors(self.protocol, candidate)
+
+    def test_terminal_payload_and_recovery_order_are_strict(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(item for item in candidate["operation_cases"]
+                        if item["id"] == "connect-authentication-terminal")
+        terminal = next(step for step in scenario["steps"]
+                        if step["action"] == "emit_terminal")
+        terminal["failure"] = "NONE"
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(item for item in candidate["operation_cases"]
+                        if item["id"] == "accepted-response-disconnect-recovery")
+        query_index = next(i for i, step in enumerate(scenario["steps"])
+                           if step["action"] == "query")
+        status_index = next(i for i, step in enumerate(scenario["steps"])
+                            if step["action"] == "status_query")
+        scenario["steps"][query_index], scenario["steps"][status_index] = (
+            scenario["steps"][status_index], scenario["steps"][query_index]
+        )
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(item for item in candidate["operation_cases"]
+                        if item["id"] == "accepted-response-disconnect-recovery")
+        reconnect_index = next(i for i, step in enumerate(scenario["steps"])
+                               if step["action"] == "reconnect")
+        scenario["steps"].insert(reconnect_index + 1, {
+            "action": "replay_accepted", "operation_id": 50,
+        })
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+    def test_full_snapshot_identity_and_postconditions_are_checked(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(item for item in candidate["operation_cases"]
+                        if item["id"] == "ordinary-status-coalesce-and-disconnect")
+        scenario["steps"][1]["snapshot"] = {
+            "state": "ERROR", "failure": "AUTHENTICATION",
+            "profile_ssid": "Home",
+        }
+        scenario["steps"][2]["snapshot"] = {
+            "state": "ERROR", "failure": "AUTHENTICATION",
+            "profile_ssid": "Home",
+        }
+        scenario["steps"][3]["snapshot"] = copy.deepcopy(
+            scenario["steps"][2]["snapshot"]
+        )
+        validate_vectors(self.protocol, candidate)
+
+        candidate = copy.deepcopy(self.vectors)
+        complete = next(step for step in candidate["operation_cases"][0]["steps"]
+                        if step["action"] == "complete")
+        del complete["snapshot"]
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "MISSING_FIELD",
+        )
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["operation_result"]["success_postconditions"][
+            "CONNECT"
+        ]["profile"] = "ABSENT"
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "OPERATION")
+
+        candidate = copy.deepcopy(self.protocol)
+        del candidate["wire_rules"]["operation_result"][
+            "success_postconditions"
+        ]["SCAN"]
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "OPERATION")
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(item for item in candidate["operation_cases"]
+                        if item["id"] == "connected-terminal-and-ack-order")
+        complete = next(step for step in scenario["steps"]
+                        if step["action"] == "complete")
+        complete["snapshot"] = {
+            "state": "IDLE", "failure": "NONE", "profile_ssid": "Home",
+        }
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(item for item in candidate["operation_cases"]
+                        if item["id"] == "connected-terminal-and-ack-order")
+        complete = next(step for step in scenario["steps"]
+                        if step["action"] == "complete")
+        complete["status_changed"] = False
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+    def test_att_pdu_relationship_is_checked_when_declared(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        case = next(item for item in candidate["routing_cases"]
+                    if item["id"] == "full-mtu-admitted")
+        case["att_pdu_length"] = case["att_mtu"] + 1
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "TRANSPORT_MATH",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        case = next(item for item in candidate["routing_cases"]
+                    if item["id"] == "full-mtu-admitted")
+        case["att_value_length"] = (
+            case["att_pdu_length"] + 1 -
+            self.protocol["protocol"]["transport"]["att_value_header_bytes"]
+        )
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "TRANSPORT_MATH",
         )
 
         candidate = copy.deepcopy(self.vectors)
@@ -886,12 +1141,182 @@ class VectorTest(unittest.TestCase):
             if step["action"] == "emit_terminal"
         )
         scenario["steps"].insert(terminal_index, {
-            "action": "emit_ordinary_status", "snapshot": "ERROR",
+            "action": "emit_ordinary_status",
+            "snapshot": {"state": "ERROR", "failure": "AUTHENTICATION",
+                         "profile_ssid": "Home"},
         })
         self.assertEqual(
             contract_error_code(validate_vectors, self.protocol, candidate),
             "EXPECTATION",
         )
+
+    def test_terminal_record_correlation_rejects_payload_mismatches(self) -> None:
+        mutations = [
+            (lambda step: step.__setitem__("operation_id", 61), "EXPECTATION"),
+            (lambda step: step.__setitem__("operation", "CONNECT"),
+             "EXPECTATION"),
+            (lambda step: step.__setitem__("failure", "RADIO"),
+             "EXPECTATION"),
+            (lambda step: step.__setitem__("count", 0), "LENGTH"),
+            (lambda step: step["networks"][0].__setitem__("rssi_dbm", -41),
+             "EXPECTATION"),
+        ]
+        for mutation, expected in mutations:
+            candidate = copy.deepcopy(self.vectors)
+            scenario = next(
+                item for item in candidate["operation_cases"]
+                if item["id"] == "scan-terminal-payload-correlation"
+            )
+            terminal = next(step for step in scenario["steps"]
+                            if step["action"] == "emit_terminal")
+            mutation(terminal)
+            with self.subTest(mutation=mutation):
+                self.assertEqual(
+                    contract_error_code(validate_vectors, self.protocol,
+                                        candidate),
+                    expected,
+                )
+
+        for field in ("operation_id", "operation", "failure", "count",
+                      "networks"):
+            candidate = copy.deepcopy(self.vectors)
+            scenario = next(
+                item for item in candidate["operation_cases"]
+                if item["id"] == "scan-terminal-payload-correlation"
+            )
+            terminal = next(step for step in scenario["steps"]
+                            if step["action"] == "emit_terminal")
+            del terminal[field]
+            with self.subTest(missing=field):
+                self.assertEqual(
+                    contract_error_code(validate_vectors, self.protocol,
+                                        candidate),
+                    "MISSING_FIELD",
+                )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] == "connected-terminal-and-ack-order"
+        )
+        terminal = next(step for step in scenario["steps"]
+                        if step["action"] == "emit_terminal")
+        terminal["count"] = 0
+        terminal["networks"] = []
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "UNKNOWN_FIELD",
+        )
+
+    def test_recovery_order_replay_and_ack_boundaries_are_rejected(self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] == "active-operation-recovery-requeries-terminal"
+        )
+        query_index = next(i for i, step in enumerate(scenario["steps"])
+                           if step["action"] == "query")
+        scenario["steps"].insert(query_index, {
+            "action": "status_query",
+            "expect": "CURRENT",
+            "snapshot": {"state": "IDLE", "failure": "NONE",
+                         "profile_ssid": ""},
+        })
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] == "accepted-response-disconnect-recovery"
+        )
+        status_index = next(i for i, step in enumerate(scenario["steps"])
+                            if step["action"] == "status_query")
+        scenario["steps"].insert(status_index, {
+            "action": "ack", "operation_id": 50, "expect": "OK",
+        })
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] == "active-operation-recovery-requeries-terminal"
+        )
+        reconnect_index = next(i for i, step in enumerate(scenario["steps"])
+                               if step["action"] == "reconnect")
+        scenario["steps"].insert(reconnect_index + 1, {
+            "action": "replay_accepted", "operation_id": 80,
+        })
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] == "ordinary-update-retained-during-recovery"
+        )
+        ordinary = copy.deepcopy(next(
+            step for step in scenario["steps"]
+            if step["action"] == "emit_ordinary_status"
+        ))
+        confirm_index = next(i for i, step in enumerate(scenario["steps"])
+                             if step["action"] == "confirm_ack")
+        scenario["steps"].insert(confirm_index, ordinary)
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] == "ordinary-update-retained-during-recovery"
+        )
+        ordinary = copy.deepcopy(next(
+            step for step in scenario["steps"]
+            if step["action"] == "emit_ordinary_status"
+        ))
+        ack_index = next(i for i, step in enumerate(scenario["steps"])
+                         if step["action"] == "ack")
+        scenario["steps"].insert(ack_index, ordinary)
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+    def test_snapshot_identity_does_not_coalesce_failure_or_profile_changes(
+            self) -> None:
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] == "ordinary-status-coalesce-and-disconnect"
+        )
+        scenario["steps"][0]["snapshot"] = {
+            "state": "ERROR", "failure": "RADIO", "profile_ssid": "",
+        }
+        scenario["steps"][1]["snapshot"] = {
+            "state": "ERROR", "failure": "RADIO", "profile_ssid": "",
+        }
+        scenario["steps"][2]["snapshot"] = {
+            "state": "ERROR", "failure": "STORAGE", "profile_ssid": "",
+        }
+        scenario["steps"][3]["snapshot"] = copy.deepcopy(
+            scenario["steps"][2]["snapshot"]
+        )
+        scenario["steps"][4]["snapshot"] = {
+            "state": "ERROR", "failure": "STORAGE", "profile_ssid": "Home",
+        }
+        scenario["steps"][6]["snapshot"] = copy.deepcopy(
+            scenario["steps"][4]["snapshot"]
+        )
+        validate_vectors(self.protocol, candidate)
 
 
 if __name__ == "__main__":

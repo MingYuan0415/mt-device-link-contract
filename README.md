@@ -116,7 +116,11 @@ The events are:
 SSID and profile fields are strict UTF-8 without Unicode control characters.
 OPEN credentials require an empty password. PERSONAL passwords contain 8..63
 printable ASCII bytes. Scan results carry at most five records; empty SSIDs and
-authmodes outside the following set are filtered before encoding:
+hidden SSIDs, invalid UTF-8, control characters, and SSIDs longer than 32 bytes
+are filtered before encoding. Each source record is counted independently, so
+duplicate SSIDs remain distinct wire records. `count` is the number of retained
+wire records after filtering and the five-record limit; selection and ordering
+are not part of this contract. Authmodes outside the following set are filtered:
 
 - OPEN: `WIFI_AUTH_OPEN`
 - PERSONAL: `WIFI_AUTH_WPA_PSK`, `WIFI_AUTH_WPA2_PSK`,
@@ -124,9 +128,8 @@ authmodes outside the following set are filtered before encoding:
   `WIFI_AUTH_WPA2_WPA3_PSK`
 
 WEP, WAPI-PSK, OWE, Enterprise, DPP, and unknown authmodes are filtered before
-encoding. The reported count is the number of representable records after
-filtering and the five-record limit. Selection and ordering are not part of this
-contract.
+encoding. `OPEN` and `PERSONAL` are the only wire security enum values. RSSI is
+an `i8` in the inclusive range -127..127.
 `SET_CREDENTIALS` validates only the wire profile. If the actual AP authmode
 does not match the selected profile, `CONNECT` is accepted and completes with
 `AUTHENTICATION`.
@@ -134,16 +137,25 @@ does not match the selected profile, `CONNECT` is accepted and completes with
 `profile_ssid` identifies the saved profile, so it can temporarily differ from
 the SSID of an existing link after `SET_CREDENTIALS` succeeds while connected.
 
-The minimum observable success meanings are fixed: `SET_CREDENTIALS` leaves a
-profile available without initiating a connection and does not change an
-existing link; `CONNECT` reaches IPv4; `DISCONNECT` is disconnected when it
-completes and retains the profile; and `FORGET` is disconnected with no
-profile. `CONNECT` and `FORGET` return immediate `NOT_FOUND` without creating
-an operation when no profile exists. `DISCONNECT` while already disconnected
-is accepted and completes successfully. An occupied operation slot therefore
-returns `BUSY` before a missing-profile precondition is evaluated. Internal
-persistence, retry, rollback, and later automatic connection behavior remain
-outside the BLE contract.
+The observable success postconditions are fixed against the complete
+`WIFI_STATUS(state, failure, profile_ssid)` snapshot:
+
+| Operation | State | Failure | Profile |
+| --- | --- | --- | --- |
+| `SCAN` | unchanged | unchanged | unchanged |
+| `SET_CREDENTIALS` | unchanged | unchanged | present |
+| `CONNECT` | `CONNECTED` | `NONE` | present |
+| `DISCONNECT` | `IDLE` | `NONE` | retained unchanged |
+| `FORGET` | `IDLE` | `NONE` | absent |
+
+Thus `SET_CREDENTIALS` does not initiate a connection or change an existing
+link, while `CONNECTED` means IPv4 is available. `CONNECT` and `FORGET` return
+immediate `NOT_FOUND` without creating an operation when no profile exists.
+`DISCONNECT` while already disconnected is accepted and completes
+successfully. An occupied operation slot therefore returns `BUSY` before a
+missing-profile precondition is evaluated. Internal persistence, retry,
+rollback, and later automatic connection behavior remain outside the BLE
+contract.
 
 ## Transactions and recovery
 
@@ -166,33 +178,42 @@ slot. A timeout produces the `TIMEOUT` failure and one terminal record/event;
 the protocol does not set an internal retry algorithm or timeout duration.
 
 `GET_OPERATION` returns the slot's operation, phase, failure and retained scan
-results. With no record it returns `NOT_FOUND`. `ACK_OPERATION` applies only to
+results. Every terminal event must match that retained record in operation ID,
+operation, failure, and (for `SCAN_COMPLETE`) count and complete network list.
+With no record it returns `NOT_FOUND`. `ACK_OPERATION` applies only to
 the matching terminal record; an active record or a terminal event that has not
 yet been confirmed on the current connection is not acknowledged, and a
 missing or mismatched ID returns `NOT_FOUND`.
 
-A BLE disconnect neither cancels the operation nor clears its record. The
-terminal event is not replayed automatically. If the accepted response was not
-confirmed, that indication is discarded and the operation continues; this is a
-recovery condition, not a cancellation or replay request. After reconnecting,
-the bonded client first negotiates MTU 498, reads the exact operation result
-through `GET_OPERATION`, reads the current Wi-Fi snapshot through `GET_STATUS`,
-and then acknowledges the terminal record. The same query path applies when a
-final status or terminal event was lost. `ACK_OPERATION` after this recovery
-does not require a terminal indication confirmation on the new connection. A
-reboot clears the RAM record, after which `GET_OPERATION` returns `NOT_FOUND`
-and only the current `GET_STATUS` snapshot remains available.
+A BLE disconnect neither cancels the operation nor clears its record. Accepted
+responses, final status indications, and terminal events are never replayed.
+If an accepted response was not confirmed, it is discarded and the operation
+continues; this is a recovery condition, not a cancellation or replay request.
+After reconnecting, the bonded client first negotiates MTU 498 and must perform
+the strict recovery sequence `GET_OPERATION -> GET_STATUS -> ACK_OPERATION`.
+If the first `GET_OPERATION` result is `ACTIVE`, the client waits for completion
+and repeats `GET_OPERATION` to obtain the terminal record before continuing to
+`GET_STATUS` and `ACK_OPERATION`.
+The same sequence applies when a final status or terminal event was lost.
+`GET_OPERATION` and `GET_STATUS` are authoritative; `ACK_OPERATION` after this
+sequence does not require a terminal indication confirmation on the new
+connection. Ordinary notifications resume after the recovery sequence has
+completed, including ACK response confirmation. A reboot
+clears the RAM record, after which `GET_OPERATION` returns `NOT_FOUND` and only
+the current `GET_STATUS` snapshot remains available.
 
 An accepted response must be confirmed before its terminal event. Ordinary
 `WIFI_STATUS` updates are best-effort notifications: only the latest pending
-snapshot is retained, duplicate snapshots are coalesced, and pending ordinary
-updates may be discarded on disconnect. `GET_STATUS` is authoritative. If the
-operation changes the Wi-Fi snapshot, its final status is latched and confirmed
-before the terminal event; ordinary updates cannot replace that final status.
-After an operation enters a terminal phase, an ordinary snapshot may continue
-to replace the retained latest snapshot, but it is deferred until the terminal
-event has been sent and confirmed. Recovery/no-replay connections may resume
-ordinary notifications after the retained record is queried. While any
+full snapshot is retained, duplicate `(state, failure, profile_ssid)` snapshots
+are coalesced, and pending ordinary updates may be discarded on disconnect.
+`GET_STATUS` is authoritative. If the operation changes the Wi-Fi snapshot, its
+final status is latched and confirmed before the terminal event; ordinary
+updates cannot replace that final status. After an operation enters a terminal
+phase, an ordinary snapshot may continue to replace the retained latest
+snapshot, but it is deferred until the terminal event has been sent and
+confirmed. Recovery/no-replay connections may resume ordinary notifications only
+after the retained record and status have been queried and the recovery
+`ACK_OPERATION` response has been confirmed. While any
 indication is outstanding, a new ACK Write is rejected by ATT `0xfe`. On the
 current connection, `ACK_OPERATION` is accepted only after the terminal
 indication is confirmed; after a disconnect, the queried retained record may be
@@ -203,9 +224,12 @@ confirmation leaves the record recoverable.
 ## Verification status
 
 The schema, vectors, and checker are internally consistent. The profile remains
-a freeze candidate. Numeric Comparison, local bond clear and reconnect, ATT MTU
-498, DLE, 495/496-byte boundaries, disconnect recovery, finite operation
-timeouts, and on-air interoperability have not yet been validated on firmware
-and a mobile client.
+a freeze candidate. Its profile identity, UUIDs, characteristic properties,
+security gates, frame markers, 498/495 transport boundaries, enum and status
+values, operation set, and ATT error names and values are frozen for v1;
+changing them requires a new profile/version. Numeric Comparison, local bond
+clear and reconnect, ATT MTU 498, DLE, 495/496-byte boundaries, disconnect
+recovery, finite operation timeouts, and on-air interoperability have not yet
+been validated on firmware and a mobile client.
 
 [bluetooth-sm]: https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core_v6.3/out/en/host/security-manager-specification.html

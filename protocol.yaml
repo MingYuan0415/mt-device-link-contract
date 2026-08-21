@@ -451,6 +451,7 @@ wire_rules:
     profile_required_states: [CONNECTING, CONNECTED]
     profile_required_failures: [AUTHENTICATION, AP_NOT_FOUND, TIMEOUT, LINK_LOST]
     emitted_when_snapshot_changes: true
+    snapshot_fields: [state, failure, profile_ssid]
     delivery:
       ordinary_updates: latest_only
       duplicate_updates: coalesce
@@ -476,6 +477,9 @@ wire_rules:
         - WIFI_AUTH_WPA2_WPA3_PSK
     unsupported_security_policy: filter
     empty_ssid_policy: filter
+    invalid_ssid_policy: filter
+    duplicate_ssid_policy: preserve
+    count_semantics: filtered_wire_records
     count_after_filter: true
 
   operation_result:
@@ -487,10 +491,26 @@ wire_rules:
       DISCONNECT: [NONE, RADIO, TIMEOUT, INTERNAL]
       FORGET: [NONE, STORAGE, RADIO, TIMEOUT, INTERNAL]
     success_postconditions:
-      SET_CREDENTIALS: profile_available_without_connecting
-      CONNECT: connected_with_ipv4
-      DISCONNECT: disconnected_at_completion
-      FORGET: disconnected_and_profile_absent
+      SCAN:
+        state: UNCHANGED
+        failure: UNCHANGED
+        profile: UNCHANGED
+      SET_CREDENTIALS:
+        state: UNCHANGED
+        failure: UNCHANGED
+        profile: PRESENT
+      CONNECT:
+        state: CONNECTED
+        failure: NONE
+        profile: PRESENT
+      DISCONNECT:
+        state: IDLE
+        failure: NONE
+        profile: RETAINED
+      FORGET:
+        state: IDLE
+        failure: NONE
+        profile: ABSENT
     edge_cases:
       set_credentials_while_connected:
         command: SET_CREDENTIALS
@@ -549,6 +569,10 @@ wire_rules:
     timeout_failure: TIMEOUT
     terminal_event_generated_once: true
     accepted_response_disconnect_policy: discard_and_query
+    accepted_response_replay: false
+    recovery_required: true
+    reconnect_sequence: [GET_OPERATION, GET_STATUS, ACK_OPERATION]
+    ordinary_status_resume_after: ACK_OPERATION_CONFIRMATION
     new_operation_while_active_status: BUSY
     new_operation_while_terminal_status: BUSY
     get_operation_no_record_status: NOT_FOUND
@@ -569,6 +593,7 @@ wire_rules:
     accepted_response_confirmation_precedes_terminal_event: true
     final_status_confirmation_precedes_terminal_event_if_changed: true
     ack_response_confirmation_precedes_record_clear: true
+    terminal_event_record_correlation: full_payload
     terminal_events:
       SCAN: SCAN_COMPLETE
       SET_CREDENTIALS: OPERATION_COMPLETE

@@ -233,6 +233,12 @@
         "hex": "f00201000000000101410101"
       },
       {
+        "id": "scan-rssi-zero",
+        "kind": "event",
+        "name": "SCAN_COMPLETE",
+        "hex": "f00201000000000101410100"
+      },
+      {
         "id": "scan-rssi-upper-bound",
         "kind": "event",
         "name": "SCAN_COMPLETE",
@@ -388,6 +394,20 @@
         "name": "SCAN_COMPLETE",
         "hex": "f00201000000000101410180",
         "expected_error": "VALUE"
+      },
+      {
+        "id": "scan-empty-ssid",
+        "kind": "event",
+        "name": "SCAN_COMPLETE",
+        "hex": "f00201000000000100010100",
+        "expected_error": "LENGTH"
+      },
+      {
+        "id": "scan-control-ssid",
+        "kind": "event",
+        "name": "SCAN_COMPLETE",
+        "hex": "f00201000000000101010100",
+        "expected_error": "UTF8"
       },
       {
         "id": "scan-count-over-maximum",
@@ -698,7 +718,9 @@
       "indication_outstanding": false,
       "payload_valid": true,
       "slot_occupied": true,
-      "conditions": ["profile_absent"],
+      "conditions": [
+        "profile_absent"
+      ],
       "expect": "APP:BUSY"
     },
     {
@@ -713,7 +735,9 @@
       "indication_outstanding": false,
       "payload_valid": true,
       "slot_occupied": false,
-      "conditions": ["profile_absent"],
+      "conditions": [
+        "profile_absent"
+      ],
       "expect": "APP:NOT_FOUND"
     },
     {
@@ -721,6 +745,7 @@
       "opcode": 2,
       "request_id": 16,
       "att_mtu": 498,
+      "att_pdu_length": 5,
       "att_value_length": 2,
       "encrypted": true,
       "authenticated": true,
@@ -735,49 +760,104 @@
     {
       "id": "scan-result-matrix",
       "operation": "SCAN",
-      "allowed_failures": ["NONE", "TIMEOUT", "RADIO", "INTERNAL"]
+      "allowed_failures": [
+        "NONE",
+        "TIMEOUT",
+        "RADIO",
+        "INTERNAL"
+      ]
     },
     {
       "id": "set-credentials-result-matrix",
       "operation": "SET_CREDENTIALS",
-      "allowed_failures": ["NONE", "STORAGE", "TIMEOUT", "INTERNAL"]
+      "allowed_failures": [
+        "NONE",
+        "STORAGE",
+        "TIMEOUT",
+        "INTERNAL"
+      ]
     },
     {
       "id": "connect-result-matrix",
       "operation": "CONNECT",
-      "allowed_failures": ["NONE", "AUTHENTICATION", "AP_NOT_FOUND", "TIMEOUT", "LINK_LOST", "RADIO", "STORAGE", "INTERNAL"]
+      "allowed_failures": [
+        "NONE",
+        "AUTHENTICATION",
+        "AP_NOT_FOUND",
+        "TIMEOUT",
+        "LINK_LOST",
+        "RADIO",
+        "STORAGE",
+        "INTERNAL"
+      ]
     },
     {
       "id": "disconnect-result-matrix",
       "operation": "DISCONNECT",
-      "allowed_failures": ["NONE", "RADIO", "TIMEOUT", "INTERNAL"]
+      "allowed_failures": [
+        "NONE",
+        "RADIO",
+        "TIMEOUT",
+        "INTERNAL"
+      ]
     },
     {
       "id": "forget-result-matrix",
       "operation": "FORGET",
-      "allowed_failures": ["NONE", "STORAGE", "RADIO", "TIMEOUT", "INTERNAL"]
+      "allowed_failures": [
+        "NONE",
+        "STORAGE",
+        "RADIO",
+        "TIMEOUT",
+        "INTERNAL"
+      ]
     }
   ],
   "wifi_cases": [
     {
       "id": "credentials-success-postcondition",
       "case": "success.SET_CREDENTIALS",
-      "expect": "profile_available_without_connecting"
+      "expect": {
+        "state": "UNCHANGED",
+        "failure": "UNCHANGED",
+        "profile": "PRESENT"
+      }
     },
     {
       "id": "connect-success-postcondition",
       "case": "success.CONNECT",
-      "expect": "connected_with_ipv4"
+      "expect": {
+        "state": "CONNECTED",
+        "failure": "NONE",
+        "profile": "PRESENT"
+      }
     },
     {
       "id": "disconnect-success-postcondition",
       "case": "success.DISCONNECT",
-      "expect": "disconnected_at_completion"
+      "expect": {
+        "state": "IDLE",
+        "failure": "NONE",
+        "profile": "RETAINED"
+      }
     },
     {
       "id": "forget-success-postcondition",
       "case": "success.FORGET",
-      "expect": "disconnected_and_profile_absent"
+      "expect": {
+        "state": "IDLE",
+        "failure": "NONE",
+        "profile": "ABSENT"
+      }
+    },
+    {
+      "id": "scan-success-postcondition",
+      "case": "success.SCAN",
+      "expect": {
+        "state": "UNCHANGED",
+        "failure": "UNCHANGED",
+        "profile": "UNCHANGED"
+      }
     },
     {
       "id": "credentials-preserve-link",
@@ -840,17 +920,100 @@
       "case": "scan_filtering",
       "expect": {
         "input": [
-          {"ssid": "", "authmode": "WIFI_AUTH_OPEN"},
-          {"ssid": "enterprise", "authmode": "WIFI_AUTH_ENTERPRISE"},
-          {"ssid": "home", "authmode": "WIFI_AUTH_WPA2_PSK"},
-          {"ssid": "secure", "authmode": "WIFI_AUTH_WPA3_PSK"},
-          {"ssid": "guest", "authmode": "WIFI_AUTH_WPA_PSK"},
-          {"ssid": "lab", "authmode": "WIFI_AUTH_WPA_WPA2_PSK"},
-          {"ssid": "mesh", "authmode": "WIFI_AUTH_WPA2_WPA3_PSK"},
-          {"ssid": "office", "authmode": "WIFI_AUTH_WPA2_PSK"}
+          {
+            "ssid": "",
+            "authmode": "WIFI_AUTH_OPEN",
+            "rssi_dbm": -30
+          },
+          {
+            "ssid": "enterprise",
+            "authmode": "WIFI_AUTH_ENTERPRISE",
+            "rssi_dbm": -31
+          },
+          {
+            "ssid": "legacy",
+            "authmode": "WIFI_AUTH_WEP",
+            "rssi_dbm": -75
+          },
+          {
+            "ssid": "wapi",
+            "authmode": "WIFI_AUTH_WAPI_PSK",
+            "rssi_dbm": -76
+          },
+          {
+            "ssid": "owe",
+            "authmode": "WIFI_AUTH_OWE",
+            "rssi_dbm": -77
+          },
+          {
+            "ssid": "dpp",
+            "authmode": "WIFI_AUTH_DPP",
+            "rssi_dbm": -78
+          },
+          {
+            "ssid": "future",
+            "authmode": "WIFI_AUTH_UNKNOWN_FUTURE",
+            "rssi_dbm": -79
+          },
+          {
+            "ssid": "home",
+            "authmode": "WIFI_AUTH_WPA2_PSK",
+            "rssi_dbm": -32
+          },
+          {
+            "ssid": "secure",
+            "authmode": "WIFI_AUTH_WPA3_PSK",
+            "rssi_dbm": -33
+          },
+          {
+            "ssid": "guest",
+            "authmode": "WIFI_AUTH_WPA_PSK",
+            "rssi_dbm": -34
+          },
+          {
+            "ssid": "lab",
+            "authmode": "WIFI_AUTH_WPA_WPA2_PSK",
+            "rssi_dbm": -35
+          },
+          {
+            "ssid": "mesh",
+            "authmode": "WIFI_AUTH_WPA2_WPA3_PSK",
+            "rssi_dbm": -36
+          },
+          {
+            "ssid": "office",
+            "authmode": "WIFI_AUTH_WPA2_PSK",
+            "rssi_dbm": -37
+          }
         ],
-        "filtered_ssids": ["home", "secure", "guest", "lab", "mesh"],
-        "count": 5
+        "count": 5,
+        "filtered_records": [
+          {
+            "ssid": "home",
+            "security": "PERSONAL",
+            "rssi_dbm": -32
+          },
+          {
+            "ssid": "secure",
+            "security": "PERSONAL",
+            "rssi_dbm": -33
+          },
+          {
+            "ssid": "guest",
+            "security": "PERSONAL",
+            "rssi_dbm": -34
+          },
+          {
+            "ssid": "lab",
+            "security": "PERSONAL",
+            "rssi_dbm": -35
+          },
+          {
+            "ssid": "mesh",
+            "security": "PERSONAL",
+            "rssi_dbm": -36
+          }
+        ]
       }
     },
     {
@@ -858,13 +1021,75 @@
       "case": "scan_filtering_under_limit",
       "expect": {
         "input": [
-          {"ssid": "", "authmode": "WIFI_AUTH_OPEN"},
-          {"ssid": "enterprise", "authmode": "WIFI_AUTH_ENTERPRISE"},
-          {"ssid": "home", "authmode": "WIFI_AUTH_WPA2_PSK"},
-          {"ssid": "secure", "authmode": "WIFI_AUTH_WPA3_PSK"}
+          {
+            "ssid": "",
+            "authmode": "WIFI_AUTH_OPEN",
+            "rssi_dbm": -30
+          },
+          {
+            "ssid": "enterprise",
+            "authmode": "WIFI_AUTH_ENTERPRISE",
+            "rssi_dbm": -31
+          },
+          {
+            "ssid": "home",
+            "authmode": "WIFI_AUTH_WPA2_PSK",
+            "rssi_dbm": -32
+          },
+          {
+            "ssid": "secure",
+            "authmode": "WIFI_AUTH_WPA3_PSK",
+            "rssi_dbm": -33
+          },
+          {
+            "ssid": "open",
+            "authmode": "WIFI_AUTH_OPEN",
+            "rssi_dbm": -34
+          },
+          {
+            "ssid": "home",
+            "authmode": "WIFI_AUTH_WPA2_PSK",
+            "rssi_dbm": -32
+          },
+          {
+            "ssid": "bad\u0001",
+            "authmode": "WIFI_AUTH_OPEN",
+            "rssi_dbm": -71
+          },
+          {
+            "ssid": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "authmode": "WIFI_AUTH_OPEN",
+            "rssi_dbm": -72
+          },
+          {
+            "ssid_hex": "ff",
+            "authmode": "WIFI_AUTH_OPEN",
+            "rssi_dbm": -73
+          }
         ],
-        "filtered_ssids": ["home", "secure"],
-        "count": 2
+        "count": 4,
+        "filtered_records": [
+          {
+            "ssid": "home",
+            "security": "PERSONAL",
+            "rssi_dbm": -32
+          },
+          {
+            "ssid": "secure",
+            "security": "PERSONAL",
+            "rssi_dbm": -33
+          },
+          {
+            "ssid": "open",
+            "security": "OPEN",
+            "rssi_dbm": -34
+          },
+          {
+            "ssid": "home",
+            "security": "PERSONAL",
+            "rssi_dbm": -32
+          }
+        ]
       }
     }
   ],
@@ -872,330 +1097,1807 @@
     {
       "id": "connected-terminal-and-ack-order",
       "steps": [
-        {"action": "accept", "operation": "CONNECT", "operation_id": 1, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 1},
-        {"action": "query", "expect": "ACTIVE", "operation_id": 1, "operation": "CONNECT", "failure": "NONE"},
-        {"action": "status_query", "expect": "CURRENT"},
-        {"action": "accept", "operation": "SCAN", "expect": "BUSY"},
-        {"action": "ack", "operation_id": 1, "expect": "BUSY"},
-        {"action": "complete", "operation_id": 1, "failure": "NONE", "status_changed": true},
-        {"action": "ack", "operation_id": 1, "expect": "BUSY"},
-        {"action": "emit_status"},
-        {"action": "confirm_status"},
-        {"action": "emit_terminal", "operation_id": 1, "operation": "CONNECT", "event": "OPERATION_COMPLETE"},
-        {"action": "ack", "operation_id": 1, "expect": "ATT:profile_tx_indication_pending"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 99, "expect": "NOT_FOUND"},
-        {"action": "accept", "operation": "SCAN", "expect": "BUSY"},
-        {"action": "ack", "operation_id": 1, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "query", "expect": "NOT_FOUND"}
+        {
+          "action": "accept",
+          "operation": "CONNECT",
+          "operation_id": 1,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 1
+        },
+        {
+          "action": "query",
+          "expect": "ACTIVE",
+          "operation_id": 1,
+          "operation": "CONNECT",
+          "failure": "NONE",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "accept",
+          "operation": "SCAN",
+          "expect": "BUSY"
+        },
+        {
+          "action": "ack",
+          "operation_id": 1,
+          "expect": "BUSY"
+        },
+        {
+          "action": "complete",
+          "operation_id": 1,
+          "failure": "NONE",
+          "status_changed": true,
+          "snapshot": {
+            "state": "CONNECTED",
+            "failure": "NONE",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "ack",
+          "operation_id": 1,
+          "expect": "BUSY"
+        },
+        {
+          "action": "emit_status",
+          "snapshot": {
+            "state": "CONNECTED",
+            "failure": "NONE",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 1,
+          "operation": "CONNECT",
+          "event": "OPERATION_COMPLETE",
+          "failure": "NONE"
+        },
+        {
+          "action": "ack",
+          "operation_id": 1,
+          "expect": "ATT:profile_tx_indication_pending"
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 99,
+          "expect": "NOT_FOUND"
+        },
+        {
+          "action": "accept",
+          "operation": "SCAN",
+          "expect": "BUSY"
+        },
+        {
+          "action": "ack",
+          "operation_id": 1,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "query",
+          "expect": "NOT_FOUND"
+        }
       ]
     },
     {
       "id": "disconnect-completion-recovery-and-ack",
       "steps": [
-        {"action": "accept", "operation": "SCAN", "operation_id": 10, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 10},
-        {"action": "disconnect"},
-        {"action": "complete", "operation_id": 10, "failure": "TIMEOUT", "status_changed": false},
-        {"action": "reconnect"},
-        {"action": "expect_no_replay"},
-        {"action": "query", "expect": "FAILED", "operation_id": 10, "operation": "SCAN", "failure": "TIMEOUT"},
-        {"action": "status_query", "expect": "CURRENT"},
-        {"action": "ack", "operation_id": 10, "expect": "OK"},
-        {"action": "disconnect"},
-        {"action": "reconnect"},
-        {"action": "expect_no_replay"},
-        {"action": "query", "expect": "FAILED", "operation_id": 10, "operation": "SCAN", "failure": "TIMEOUT"},
-        {"action": "status_query", "expect": "CURRENT"},
-        {"action": "ack", "operation_id": 10, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "query", "expect": "NOT_FOUND"}
+        {
+          "action": "accept",
+          "operation": "SCAN",
+          "operation_id": 10,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 10
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "complete",
+          "operation_id": 10,
+          "failure": "TIMEOUT",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          },
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "expect_no_replay"
+        },
+        {
+          "action": "query",
+          "expect": "FAILED",
+          "operation_id": 10,
+          "operation": "SCAN",
+          "failure": "TIMEOUT",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "ack",
+          "operation_id": 10,
+          "expect": "OK"
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "expect_no_replay"
+        },
+        {
+          "action": "query",
+          "expect": "FAILED",
+          "operation_id": 10,
+          "operation": "SCAN",
+          "failure": "TIMEOUT",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "ack",
+          "operation_id": 10,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "query",
+          "expect": "NOT_FOUND"
+        }
       ]
     },
     {
       "id": "remaining-operation-successes-and-event-disconnect",
       "steps": [
-        {"action": "accept", "operation": "SET_CREDENTIALS", "operation_id": 11, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 11},
-        {"action": "complete", "operation_id": 11, "failure": "NONE", "status_changed": true},
-        {"action": "emit_status"},
-        {"action": "confirm_status"},
-        {"action": "emit_terminal", "operation_id": 11, "operation": "SET_CREDENTIALS", "event": "OPERATION_COMPLETE"},
-        {"action": "disconnect"},
-        {"action": "reconnect"},
-        {"action": "expect_no_replay"},
-        {"action": "query", "expect": "SUCCEEDED", "operation_id": 11, "operation": "SET_CREDENTIALS", "failure": "NONE"},
-        {"action": "status_query", "expect": "CURRENT"},
-        {"action": "ack", "operation_id": 11, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "DISCONNECT", "operation_id": 12, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 12},
-        {"action": "complete", "operation_id": 12, "failure": "NONE", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 12, "operation": "DISCONNECT", "event": "OPERATION_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 12, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "FORGET", "operation_id": 13, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 13},
-        {"action": "complete", "operation_id": 13, "failure": "NONE", "status_changed": true},
-        {"action": "emit_status"},
-        {"action": "confirm_status"},
-        {"action": "emit_terminal", "operation_id": 13, "operation": "FORGET", "event": "OPERATION_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 13, "expect": "OK"},
-        {"action": "confirm_ack"}
+        {
+          "action": "accept",
+          "operation": "SET_CREDENTIALS",
+          "operation_id": 11,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 11
+        },
+        {
+          "action": "complete",
+          "operation_id": 11,
+          "failure": "NONE",
+          "status_changed": true,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "emit_status",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 11,
+          "operation": "SET_CREDENTIALS",
+          "event": "OPERATION_COMPLETE",
+          "failure": "NONE"
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "expect_no_replay"
+        },
+        {
+          "action": "query",
+          "expect": "SUCCEEDED",
+          "operation_id": 11,
+          "operation": "SET_CREDENTIALS",
+          "failure": "NONE",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "ack",
+          "operation_id": 11,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "DISCONNECT",
+          "operation_id": 12,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 12
+        },
+        {
+          "action": "complete",
+          "operation_id": 12,
+          "failure": "NONE",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 12,
+          "operation": "DISCONNECT",
+          "event": "OPERATION_COMPLETE",
+          "failure": "NONE"
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 12,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "FORGET",
+          "operation_id": 13,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 13
+        },
+        {
+          "action": "complete",
+          "operation_id": 13,
+          "failure": "NONE",
+          "status_changed": true,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "emit_status",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 13,
+          "operation": "FORGET",
+          "event": "OPERATION_COMPLETE",
+          "failure": "NONE"
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 13,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        }
       ]
     },
     {
       "id": "ordinary-status-coalesce-and-disconnect",
       "steps": [
-        {"action": "queue_ordinary_status", "snapshot": "IDLE"},
-        {"action": "queue_ordinary_status", "snapshot": "IDLE"},
-        {"action": "queue_ordinary_status", "snapshot": "SCANNING"},
-        {"action": "emit_ordinary_status", "snapshot": "SCANNING"},
-        {"action": "queue_ordinary_status", "snapshot": "CONNECTING"},
-        {"action": "confirm_ordinary_status"},
-        {"action": "emit_ordinary_status", "snapshot": "CONNECTING"},
-        {"action": "confirm_ordinary_status"},
-        {"action": "queue_ordinary_status", "snapshot": "ERROR"},
-        {"action": "disconnect"},
-        {"action": "reconnect"}
+        {
+          "action": "queue_ordinary_status",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "queue_ordinary_status",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "queue_ordinary_status",
+          "snapshot": {
+            "state": "SCANNING",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "emit_ordinary_status",
+          "snapshot": {
+            "state": "SCANNING",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "queue_ordinary_status",
+          "snapshot": {
+            "state": "CONNECTING",
+            "failure": "NONE",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "confirm_ordinary_status"
+        },
+        {
+          "action": "emit_ordinary_status",
+          "snapshot": {
+            "state": "CONNECTING",
+            "failure": "NONE",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "confirm_ordinary_status"
+        },
+        {
+          "action": "queue_ordinary_status",
+          "snapshot": {
+            "state": "ERROR",
+            "failure": "AUTHENTICATION",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "ERROR",
+            "failure": "AUTHENTICATION",
+            "profile_ssid": "Home"
+          }
+        }
       ]
     },
     {
       "id": "accepted-response-disconnect-recovery",
       "steps": [
-        {"action": "accept", "operation": "SCAN", "operation_id": 50, "expect": "ACCEPTED"},
-        {"action": "disconnect"},
-        {"action": "reconnect"},
-        {"action": "complete", "operation_id": 50, "failure": "RADIO", "status_changed": false},
-        {"action": "expect_no_replay"},
-        {"action": "query", "expect": "FAILED", "operation_id": 50, "operation": "SCAN", "failure": "RADIO"},
-        {"action": "status_query", "expect": "CURRENT"},
-        {"action": "ack", "operation_id": 50, "expect": "OK"},
-        {"action": "confirm_ack"}
+        {
+          "action": "accept",
+          "operation": "SCAN",
+          "operation_id": 50,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "complete",
+          "operation_id": 50,
+          "failure": "RADIO",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          },
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "expect_no_replay"
+        },
+        {
+          "action": "query",
+          "expect": "FAILED",
+          "operation_id": 50,
+          "operation": "SCAN",
+          "failure": "RADIO",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "ack",
+          "operation_id": 50,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        }
       ]
     },
     {
       "id": "ordinary-status-deferred-by-terminal",
       "steps": [
-        {"action": "queue_ordinary_status", "snapshot": "IDLE"},
-        {"action": "accept", "operation": "SCAN", "operation_id": 51, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 51},
-        {"action": "complete", "operation_id": 51, "failure": "RADIO", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 51, "operation": "SCAN", "event": "SCAN_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "emit_ordinary_status", "snapshot": "IDLE"},
-        {"action": "confirm_ordinary_status"},
-        {"action": "ack", "operation_id": 51, "expect": "OK"},
-        {"action": "confirm_ack"}
+        {
+          "action": "queue_ordinary_status",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "accept",
+          "operation": "SCAN",
+          "operation_id": 51,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 51
+        },
+        {
+          "action": "complete",
+          "operation_id": 51,
+          "failure": "RADIO",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          },
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 51,
+          "operation": "SCAN",
+          "event": "SCAN_COMPLETE",
+          "failure": "RADIO",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "emit_ordinary_status",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "confirm_ordinary_status"
+        },
+        {
+          "action": "ack",
+          "operation_id": 51,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        }
       ]
     },
     {
       "id": "final-status-ordinary-deferred",
       "steps": [
-        {"action": "accept", "operation": "CONNECT", "operation_id": 52, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 52},
-        {"action": "complete", "operation_id": 52, "failure": "NONE", "status_changed": true},
-        {"action": "emit_status"},
-        {"action": "confirm_status"},
-        {"action": "queue_ordinary_status", "snapshot": "ERROR"},
-        {"action": "emit_terminal", "operation_id": 52, "operation": "CONNECT", "event": "OPERATION_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "emit_ordinary_status", "snapshot": "ERROR"},
-        {"action": "confirm_ordinary_status"},
-        {"action": "ack", "operation_id": 52, "expect": "OK"},
-        {"action": "confirm_ack"}
+        {
+          "action": "accept",
+          "operation": "CONNECT",
+          "operation_id": 52,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 52
+        },
+        {
+          "action": "complete",
+          "operation_id": 52,
+          "failure": "NONE",
+          "status_changed": true,
+          "snapshot": {
+            "state": "CONNECTED",
+            "failure": "NONE",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "emit_status",
+          "snapshot": {
+            "state": "CONNECTED",
+            "failure": "NONE",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "confirm_status"
+        },
+        {
+          "action": "queue_ordinary_status",
+          "snapshot": {
+            "state": "ERROR",
+            "failure": "AUTHENTICATION",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 52,
+          "operation": "CONNECT",
+          "event": "OPERATION_COMPLETE",
+          "failure": "NONE"
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "emit_ordinary_status",
+          "snapshot": {
+            "state": "ERROR",
+            "failure": "AUTHENTICATION",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "confirm_ordinary_status"
+        },
+        {
+          "action": "ack",
+          "operation_id": 52,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        }
       ]
     },
     {
       "id": "final-status-disconnect-discard",
       "steps": [
-        {"action": "accept", "operation": "CONNECT", "operation_id": 30, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 30},
-        {"action": "complete", "operation_id": 30, "failure": "NONE", "status_changed": true},
-        {"action": "emit_status"},
-        {"action": "disconnect"},
-        {"action": "reconnect"},
-        {"action": "expect_no_replay"},
-        {"action": "query", "expect": "SUCCEEDED", "operation_id": 30, "operation": "CONNECT", "failure": "NONE"},
-        {"action": "status_query", "expect": "CURRENT"},
-        {"action": "queue_ordinary_status", "snapshot": "ERROR"},
-        {"action": "emit_ordinary_status", "snapshot": "ERROR"},
-        {"action": "confirm_ordinary_status"},
-        {"action": "ack", "operation_id": 30, "expect": "OK"},
-        {"action": "confirm_ack"}
+        {
+          "action": "accept",
+          "operation": "CONNECT",
+          "operation_id": 30,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 30
+        },
+        {
+          "action": "complete",
+          "operation_id": 30,
+          "failure": "NONE",
+          "status_changed": true,
+          "snapshot": {
+            "state": "CONNECTED",
+            "failure": "NONE",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "emit_status",
+          "snapshot": {
+            "state": "CONNECTED",
+            "failure": "NONE",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "expect_no_replay"
+        },
+        {
+          "action": "query",
+          "expect": "SUCCEEDED",
+          "operation_id": 30,
+          "operation": "CONNECT",
+          "failure": "NONE",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "CONNECTED",
+            "failure": "NONE",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "ack",
+          "operation_id": 30,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "queue_ordinary_status",
+          "snapshot": {
+            "state": "ERROR",
+            "failure": "AUTHENTICATION",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "emit_ordinary_status",
+          "snapshot": {
+            "state": "ERROR",
+            "failure": "AUTHENTICATION",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "confirm_ordinary_status"
+        }
       ]
     },
     {
       "id": "connect-authentication-terminal",
       "steps": [
-        {"action": "accept", "operation": "CONNECT", "operation_id": 31, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 31},
-        {"action": "complete", "operation_id": 31, "failure": "AUTHENTICATION", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 31, "operation": "CONNECT", "event": "OPERATION_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 31, "expect": "OK"},
-        {"action": "confirm_ack"}
+        {
+          "action": "accept",
+          "operation": "CONNECT",
+          "operation_id": 31,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 31
+        },
+        {
+          "action": "complete",
+          "operation_id": 31,
+          "failure": "AUTHENTICATION",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 31,
+          "operation": "CONNECT",
+          "event": "OPERATION_COMPLETE",
+          "failure": "AUTHENTICATION"
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 31,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        }
       ]
     },
     {
       "id": "all-operation-failures",
       "steps": [
-        {"action": "accept", "operation": "SCAN", "operation_id": 32, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 32},
-        {"action": "complete", "operation_id": 32, "failure": "RADIO", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 32, "operation": "SCAN", "event": "SCAN_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 32, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "SET_CREDENTIALS", "operation_id": 33, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 33},
-        {"action": "complete", "operation_id": 33, "failure": "STORAGE", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 33, "operation": "SET_CREDENTIALS", "event": "OPERATION_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 33, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "CONNECT", "operation_id": 34, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 34},
-        {"action": "complete", "operation_id": 34, "failure": "AP_NOT_FOUND", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 34, "operation": "CONNECT", "event": "OPERATION_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 34, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "DISCONNECT", "operation_id": 35, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 35},
-        {"action": "complete", "operation_id": 35, "failure": "RADIO", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 35, "operation": "DISCONNECT", "event": "OPERATION_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 35, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "FORGET", "operation_id": 36, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 36},
-        {"action": "complete", "operation_id": 36, "failure": "STORAGE", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 36, "operation": "FORGET", "event": "OPERATION_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 36, "expect": "OK"},
-        {"action": "confirm_ack"}
+        {
+          "action": "accept",
+          "operation": "SCAN",
+          "operation_id": 32,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 32
+        },
+        {
+          "action": "complete",
+          "operation_id": 32,
+          "failure": "RADIO",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          },
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 32,
+          "operation": "SCAN",
+          "event": "SCAN_COMPLETE",
+          "failure": "RADIO",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 32,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "SET_CREDENTIALS",
+          "operation_id": 33,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 33
+        },
+        {
+          "action": "complete",
+          "operation_id": 33,
+          "failure": "STORAGE",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 33,
+          "operation": "SET_CREDENTIALS",
+          "event": "OPERATION_COMPLETE",
+          "failure": "STORAGE"
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 33,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "CONNECT",
+          "operation_id": 34,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 34
+        },
+        {
+          "action": "complete",
+          "operation_id": 34,
+          "failure": "AP_NOT_FOUND",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 34,
+          "operation": "CONNECT",
+          "event": "OPERATION_COMPLETE",
+          "failure": "AP_NOT_FOUND"
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 34,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "DISCONNECT",
+          "operation_id": 35,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 35
+        },
+        {
+          "action": "complete",
+          "operation_id": 35,
+          "failure": "RADIO",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 35,
+          "operation": "DISCONNECT",
+          "event": "OPERATION_COMPLETE",
+          "failure": "RADIO"
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 35,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "FORGET",
+          "operation_id": 36,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 36
+        },
+        {
+          "action": "complete",
+          "operation_id": 36,
+          "failure": "STORAGE",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 36,
+          "operation": "FORGET",
+          "event": "OPERATION_COMPLETE",
+          "failure": "STORAGE"
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 36,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        }
       ]
     },
     {
       "id": "all-operation-disconnect-recovery",
       "steps": [
-        {"action": "accept", "operation": "SCAN", "operation_id": 40, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 40},
-        {"action": "disconnect"},
-        {"action": "complete", "operation_id": 40, "failure": "RADIO", "status_changed": false},
-        {"action": "reconnect"},
-        {"action": "expect_no_replay"},
-        {"action": "query", "expect": "FAILED", "operation_id": 40, "operation": "SCAN", "failure": "RADIO"},
-        {"action": "status_query", "expect": "CURRENT"},
-        {"action": "ack", "operation_id": 40, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "SET_CREDENTIALS", "operation_id": 41, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 41},
-        {"action": "disconnect"},
-        {"action": "complete", "operation_id": 41, "failure": "STORAGE", "status_changed": false},
-        {"action": "reconnect"},
-        {"action": "expect_no_replay"},
-        {"action": "query", "expect": "FAILED", "operation_id": 41, "operation": "SET_CREDENTIALS", "failure": "STORAGE"},
-        {"action": "status_query", "expect": "CURRENT"},
-        {"action": "ack", "operation_id": 41, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "CONNECT", "operation_id": 42, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 42},
-        {"action": "disconnect"},
-        {"action": "complete", "operation_id": 42, "failure": "AP_NOT_FOUND", "status_changed": false},
-        {"action": "reconnect"},
-        {"action": "expect_no_replay"},
-        {"action": "query", "expect": "FAILED", "operation_id": 42, "operation": "CONNECT", "failure": "AP_NOT_FOUND"},
-        {"action": "status_query", "expect": "CURRENT"},
-        {"action": "ack", "operation_id": 42, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "DISCONNECT", "operation_id": 43, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 43},
-        {"action": "disconnect"},
-        {"action": "complete", "operation_id": 43, "failure": "RADIO", "status_changed": false},
-        {"action": "reconnect"},
-        {"action": "expect_no_replay"},
-        {"action": "query", "expect": "FAILED", "operation_id": 43, "operation": "DISCONNECT", "failure": "RADIO"},
-        {"action": "status_query", "expect": "CURRENT"},
-        {"action": "ack", "operation_id": 43, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "FORGET", "operation_id": 44, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 44},
-        {"action": "disconnect"},
-        {"action": "complete", "operation_id": 44, "failure": "STORAGE", "status_changed": false},
-        {"action": "reconnect"},
-        {"action": "expect_no_replay"},
-        {"action": "query", "expect": "FAILED", "operation_id": 44, "operation": "FORGET", "failure": "STORAGE"},
-        {"action": "status_query", "expect": "CURRENT"},
-        {"action": "ack", "operation_id": 44, "expect": "OK"},
-        {"action": "confirm_ack"}
+        {
+          "action": "accept",
+          "operation": "SCAN",
+          "operation_id": 40,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 40
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "complete",
+          "operation_id": 40,
+          "failure": "RADIO",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          },
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "expect_no_replay"
+        },
+        {
+          "action": "query",
+          "expect": "FAILED",
+          "operation_id": 40,
+          "operation": "SCAN",
+          "failure": "RADIO",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "ack",
+          "operation_id": 40,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "SET_CREDENTIALS",
+          "operation_id": 41,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 41
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "complete",
+          "operation_id": 41,
+          "failure": "STORAGE",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "expect_no_replay"
+        },
+        {
+          "action": "query",
+          "expect": "FAILED",
+          "operation_id": 41,
+          "operation": "SET_CREDENTIALS",
+          "failure": "STORAGE",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "ack",
+          "operation_id": 41,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "CONNECT",
+          "operation_id": 42,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 42
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "complete",
+          "operation_id": 42,
+          "failure": "AP_NOT_FOUND",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "expect_no_replay"
+        },
+        {
+          "action": "query",
+          "expect": "FAILED",
+          "operation_id": 42,
+          "operation": "CONNECT",
+          "failure": "AP_NOT_FOUND",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "ack",
+          "operation_id": 42,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "DISCONNECT",
+          "operation_id": 43,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 43
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "complete",
+          "operation_id": 43,
+          "failure": "RADIO",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "expect_no_replay"
+        },
+        {
+          "action": "query",
+          "expect": "FAILED",
+          "operation_id": 43,
+          "operation": "DISCONNECT",
+          "failure": "RADIO",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "ack",
+          "operation_id": 43,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "FORGET",
+          "operation_id": 44,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 44
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "complete",
+          "operation_id": 44,
+          "failure": "STORAGE",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "expect_no_replay"
+        },
+        {
+          "action": "query",
+          "expect": "FAILED",
+          "operation_id": 44,
+          "operation": "FORGET",
+          "failure": "STORAGE",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "ack",
+          "operation_id": 44,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        }
       ]
     },
     {
       "id": "all-operation-timeouts",
       "steps": [
-        {"action": "accept", "operation": "SCAN", "operation_id": 20, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 20},
-        {"action": "complete", "operation_id": 20, "failure": "TIMEOUT", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 20, "operation": "SCAN", "event": "SCAN_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 20, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "SET_CREDENTIALS", "operation_id": 21, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 21},
-        {"action": "complete", "operation_id": 21, "failure": "TIMEOUT", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 21, "operation": "SET_CREDENTIALS", "event": "OPERATION_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 21, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "CONNECT", "operation_id": 22, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 22},
-        {"action": "complete", "operation_id": 22, "failure": "TIMEOUT", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 22, "operation": "CONNECT", "event": "OPERATION_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 22, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "DISCONNECT", "operation_id": 23, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 23},
-        {"action": "complete", "operation_id": 23, "failure": "TIMEOUT", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 23, "operation": "DISCONNECT", "event": "OPERATION_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 23, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "accept", "operation": "FORGET", "operation_id": 24, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 24},
-        {"action": "complete", "operation_id": 24, "failure": "TIMEOUT", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 24, "operation": "FORGET", "event": "OPERATION_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 24, "expect": "OK"},
-        {"action": "confirm_ack"}
+        {
+          "action": "accept",
+          "operation": "SCAN",
+          "operation_id": 20,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 20
+        },
+        {
+          "action": "complete",
+          "operation_id": 20,
+          "failure": "TIMEOUT",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          },
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 20,
+          "operation": "SCAN",
+          "event": "SCAN_COMPLETE",
+          "failure": "TIMEOUT",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 20,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "SET_CREDENTIALS",
+          "operation_id": 21,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 21
+        },
+        {
+          "action": "complete",
+          "operation_id": 21,
+          "failure": "TIMEOUT",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 21,
+          "operation": "SET_CREDENTIALS",
+          "event": "OPERATION_COMPLETE",
+          "failure": "TIMEOUT"
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 21,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "CONNECT",
+          "operation_id": 22,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 22
+        },
+        {
+          "action": "complete",
+          "operation_id": 22,
+          "failure": "TIMEOUT",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 22,
+          "operation": "CONNECT",
+          "event": "OPERATION_COMPLETE",
+          "failure": "TIMEOUT"
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 22,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "DISCONNECT",
+          "operation_id": 23,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 23
+        },
+        {
+          "action": "complete",
+          "operation_id": 23,
+          "failure": "TIMEOUT",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 23,
+          "operation": "DISCONNECT",
+          "event": "OPERATION_COMPLETE",
+          "failure": "TIMEOUT"
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 23,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "accept",
+          "operation": "FORGET",
+          "operation_id": 24,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 24
+        },
+        {
+          "action": "complete",
+          "operation_id": 24,
+          "failure": "TIMEOUT",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 24,
+          "operation": "FORGET",
+          "event": "OPERATION_COMPLETE",
+          "failure": "TIMEOUT"
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 24,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        }
       ]
     },
     {
       "id": "id-exhaustion-and-reboot",
       "steps": [
-        {"action": "accept", "operation": "SCAN", "operation_id": 4294967295, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 4294967295},
-        {"action": "complete", "operation_id": 4294967295, "failure": "NONE", "status_changed": false},
-        {"action": "emit_terminal", "operation_id": 4294967295, "operation": "SCAN", "event": "SCAN_COMPLETE"},
-        {"action": "confirm_terminal"},
-        {"action": "ack", "operation_id": 4294967295, "expect": "OK"},
-        {"action": "confirm_ack"},
-        {"action": "exhaust_ids", "expect": "INTERNAL"},
-        {"action": "accept", "operation": "SCAN", "expect": "INTERNAL"},
-        {"action": "query", "expect": "NOT_FOUND"},
-        {"action": "reboot"},
-        {"action": "reconnect"},
-        {"action": "accept", "operation": "CONNECT", "operation_id": 1, "expect": "ACCEPTED"},
-        {"action": "confirm_accepted", "operation_id": 1},
-        {"action": "reboot"},
-        {"action": "reconnect"},
-        {"action": "query", "expect": "NOT_FOUND"}
+        {
+          "action": "accept",
+          "operation": "SCAN",
+          "operation_id": 4294967295,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 4294967295
+        },
+        {
+          "action": "complete",
+          "operation_id": 4294967295,
+          "failure": "NONE",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          },
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 4294967295,
+          "operation": "SCAN",
+          "event": "SCAN_COMPLETE",
+          "failure": "NONE",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "ack",
+          "operation_id": 4294967295,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "exhaust_ids",
+          "expect": "INTERNAL"
+        },
+        {
+          "action": "accept",
+          "operation": "SCAN",
+          "expect": "INTERNAL"
+        },
+        {
+          "action": "query",
+          "expect": "NOT_FOUND"
+        },
+        {
+          "action": "reboot"
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "accept",
+          "operation": "CONNECT",
+          "operation_id": 1,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 1
+        },
+        {
+          "action": "reboot"
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "query",
+          "expect": "NOT_FOUND"
+        }
+      ]
+    },
+    {
+      "id": "scan-terminal-payload-correlation",
+      "steps": [
+        {
+          "action": "accept",
+          "operation": "SCAN",
+          "operation_id": 60,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 60
+        },
+        {
+          "action": "complete",
+          "operation_id": 60,
+          "failure": "NONE",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          },
+          "count": 1,
+          "networks": [
+            {
+              "ssid": "Home",
+              "security": "PERSONAL",
+              "rssi_dbm": -40
+            }
+          ]
+        },
+        {
+          "action": "emit_terminal",
+          "operation_id": 60,
+          "operation": "SCAN",
+          "event": "SCAN_COMPLETE",
+          "failure": "NONE",
+          "count": 1,
+          "networks": [
+            {
+              "ssid": "Home",
+              "security": "PERSONAL",
+              "rssi_dbm": -40
+            }
+          ]
+        },
+        {
+          "action": "confirm_terminal"
+        },
+        {
+          "action": "query",
+          "expect": "SUCCEEDED",
+          "operation_id": 60,
+          "operation": "SCAN",
+          "failure": "NONE",
+          "count": 1,
+          "networks": [
+            {
+              "ssid": "Home",
+              "security": "PERSONAL",
+              "rssi_dbm": -40
+            }
+          ]
+        },
+        {
+          "action": "ack",
+          "operation_id": 60,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        }
+      ]
+    },
+    {
+      "id": "active-operation-recovery-requeries-terminal",
+      "steps": [
+        {
+          "action": "accept",
+          "operation": "CONNECT",
+          "operation_id": 80,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 80
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "expect_no_replay"
+        },
+        {
+          "action": "query",
+          "expect": "ACTIVE",
+          "operation_id": 80,
+          "operation": "CONNECT",
+          "failure": "NONE",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "complete",
+          "operation_id": 80,
+          "failure": "AP_NOT_FOUND",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "query",
+          "expect": "FAILED",
+          "operation_id": 80,
+          "operation": "CONNECT",
+          "failure": "AP_NOT_FOUND",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          }
+        },
+        {
+          "action": "ack",
+          "operation_id": 80,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        }
+      ]
+    },
+    {
+      "id": "ordinary-update-retained-during-recovery",
+      "steps": [
+        {
+          "action": "accept",
+          "operation": "SCAN",
+          "operation_id": 81,
+          "expect": "ACCEPTED"
+        },
+        {
+          "action": "confirm_accepted",
+          "operation_id": 81
+        },
+        {
+          "action": "disconnect"
+        },
+        {
+          "action": "reconnect"
+        },
+        {
+          "action": "expect_no_replay"
+        },
+        {
+          "action": "query",
+          "expect": "ACTIVE",
+          "operation_id": 81,
+          "operation": "SCAN",
+          "failure": "NONE",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "complete",
+          "operation_id": 81,
+          "failure": "RADIO",
+          "status_changed": false,
+          "snapshot": {
+            "state": "IDLE",
+            "failure": "NONE",
+            "profile_ssid": ""
+          },
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "query",
+          "expect": "FAILED",
+          "operation_id": 81,
+          "operation": "SCAN",
+          "failure": "RADIO",
+          "count": 0,
+          "networks": []
+        },
+        {
+          "action": "queue_ordinary_status",
+          "snapshot": {
+            "state": "ERROR",
+            "failure": "AUTHENTICATION",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "status_query",
+          "expect": "CURRENT",
+          "snapshot": {
+            "state": "ERROR",
+            "failure": "AUTHENTICATION",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "ack",
+          "operation_id": 81,
+          "expect": "OK"
+        },
+        {
+          "action": "confirm_ack"
+        },
+        {
+          "action": "emit_ordinary_status",
+          "snapshot": {
+            "state": "ERROR",
+            "failure": "AUTHENTICATION",
+            "profile_ssid": "Home"
+          }
+        },
+        {
+          "action": "confirm_ordinary_status"
+        }
       ]
     }
   ]
