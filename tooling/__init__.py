@@ -1,1 +1,1 @@
-"""Development tooling for the Device Link v3 contract."""
+"""Development tooling for the Device Link v1 contract."""

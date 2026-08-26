@@ -155,6 +155,10 @@ WIRE_RULE_KEYS = {
     "response", "text", "wifi_status", "scan_result", "operation_result",
     "operation_record", "operation_lifecycle", "sequencing",
 }
+COMMAND_ADMISSION_STATUSES = {
+    "OK", "ACCEPTED", "INVALID_ARGUMENT", "BUSY", "NOT_FOUND",
+    "MTU_TOO_SMALL", "INTERNAL",
+}
 
 
 class ContractError(ValueError):
@@ -815,7 +819,7 @@ def _validate_transport(value: Any) -> dict[str, Any]:
             "OPERATION", "terminal records must survive until ACK or reboot")
     low_mtu = _mapping(transport["low_mtu"], {
         "get_info_minimum_att_mtu", "full_profile_required_att_mtu",
-        "recovery_requires_full_mtu", "other_commands_status",
+        "other_commands_status",
     }, set(), "transport.low_mtu")
     require(_integer(low_mtu["get_info_minimum_att_mtu"],
                      "low_mtu.get_info_minimum_att_mtu") ==
@@ -827,9 +831,6 @@ def _validate_transport(value: Any) -> dict[str, Any]:
             "full profile MTU threshold is inconsistent")
     _string(low_mtu["other_commands_status"],
             "low_mtu.other_commands_status")
-    require(_boolean(low_mtu["recovery_requires_full_mtu"],
-                     "low_mtu.recovery_requires_full_mtu"), "OPERATION",
-            "operation recovery must require the full profile MTU")
     return transport
 
 
@@ -1015,6 +1016,8 @@ def _validate_commands(protocol: dict[str, Any], types: dict[str, Any],
                 f"{name} allowed statuses contain duplicates")
         require(all(status in statuses for status in allowed), "STATUS",
                 f"{name} references an unknown status")
+        require(set(allowed) <= COMMAND_ADMISSION_STATUSES, "STATUS",
+                f"{name} allows an undefined admission status")
         success = (success_rules["asynchronous_success_status"] if asynchronous
                    else success_rules["synchronous_success_status"])
         require(success in allowed, "STATUS",
@@ -1112,20 +1115,11 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
             transport["application_error_opcode"], "OPERATION",
             "unknown opcode envelope differs from transport")
     text = _mapping(rules["text"], {
-        "ssid_encoding", "ssid_forbidden_unicode_categories",
-        "ssid_normalization", "password_encoding", "password_min_octet",
-        "password_max_octet", "credential_password_rules",
+        "ssid_normalization", "credential_password_rules",
         "raw_64_hex_psk_supported", "text_rules",
     }, set(), "wire_rules.text")
-    require(text["ssid_encoding"] == "utf8" and
-            text["ssid_normalization"] == "none", "VALUE",
-            "SSID text rules are inconsistent")
-    _string_list(text["ssid_forbidden_unicode_categories"],
-                 "wire_rules.text.ssid_forbidden_unicode_categories")
-    require(text["password_encoding"] == "printable_ascii", "VALUE",
-            "password encoding must be printable ASCII")
-    _integer(text["password_min_octet"], "text.password_min_octet", 0, 255)
-    _integer(text["password_max_octet"], "text.password_max_octet", 0, 255)
+    require(text["ssid_normalization"] == "none", "VALUE",
+            "SSID text must not be normalized")
     limits = protocol["protocol"]["limits"]
     credential_commands = [
         command for command in protocol["commands"]
@@ -1189,14 +1183,15 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
     password_rule = _mapping(text_rules["password"], {
         "encoding", "min_octet", "max_octet",
     }, set(), "wire_rules.text.text_rules.password")
-    require(ssid_rule["encoding"] == text["ssid_encoding"] and
-            ssid_rule["forbidden_unicode_categories"] ==
-            text["ssid_forbidden_unicode_categories"], "VALUE",
-            "SSID field rule differs from the text rule")
-    require(password_rule["encoding"] == text["password_encoding"] and
-            password_rule["min_octet"] == text["password_min_octet"] and
-            password_rule["max_octet"] == text["password_max_octet"], "VALUE",
-            "password field rule differs from the text rule")
+    require(ssid_rule["encoding"] == "utf8" and
+            ssid_rule["forbidden_unicode_categories"] == ["Cc"], "VALUE",
+            "SSID text must be UTF-8 without control characters")
+    require(password_rule["encoding"] == "printable_ascii" and
+            _integer(password_rule["min_octet"],
+                     "text_rules.password.min_octet", 0, 255) == 0x20 and
+            _integer(password_rule["max_octet"],
+                     "text_rules.password.max_octet", 0, 255) == 0x7e,
+            "VALUE", "password encoding must be printable ASCII")
 
     wifi_status = _mapping(rules["wifi_status"], {
         "connected_means_ipv4", "profile_ssid_empty_means_no_profile",
@@ -1228,20 +1223,13 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
     delivery = _mapping(wifi_status["delivery"], {
         "ordinary_updates", "duplicate_updates",
         "pending_updates_on_disconnect", "authoritative_query",
-        "final_update_latched", "terminal_event_priority",
-        "ordinary_updates_while_terminal_pending",
     }, set(), "wire_rules.wifi_status.delivery")
     status_queries = {item["name"] for item in protocol["commands"]
                       if item.get("response_semantic") == "wifi_status"}
     require(delivery["ordinary_updates"] == "latest_only" and
             delivery["duplicate_updates"] == "coalesce" and
             delivery["pending_updates_on_disconnect"] == "discard" and
-            delivery["authoritative_query"] in status_queries and
-            _boolean(delivery["final_update_latched"],
-                     "wifi_status.delivery.final_update_latched") and
-            _boolean(delivery["terminal_event_priority"],
-                     "wifi_status.delivery.terminal_event_priority") and
-            delivery["ordinary_updates_while_terminal_pending"] == "defer",
+            delivery["authoritative_query"] in status_queries,
             "OPERATION", "Wi-Fi status delivery policy is inconsistent")
 
     scan = _mapping(rules["scan_result"], {
@@ -1329,6 +1317,8 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
     require(failure_matrix[scan["scan_operation"]] ==
             [scan["success_failure"], *scan_failures], "OPERATION",
             "scan failure rules differ from the operation matrix")
+    require("STORAGE" not in failure_matrix["CONNECT"], "OPERATION",
+            "CONNECT must not use STORAGE as a terminal failure")
     for name, condition in postconditions.items():
         post = _mapping(condition, {"state", "failure", "profile"}, set(),
                         f"operation_result.success_postconditions.{name}")
@@ -1421,19 +1411,15 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
         "slot_scope", "operation_id_scope", "operation_id_exhausted_status",
         "must_reach_terminal", "finite_termination_required",
         "termination_timeout", "timeout_failure",
-        "terminal_event_generated_once",
+        "terminal_event_at_most_once",
         "new_operation_while_active_status",
         "new_operation_while_terminal_status", "get_operation_no_record_status",
-        "ack_active_status", "ack_before_terminal_event_status",
-        "ack_missing_or_mismatch_status",
+        "ack_active_status", "ack_missing_or_mismatch_status",
         "ack_terminal_clears_record", "disconnect_clears_record",
         "accepted_response_disconnect_policy",
-        "accepted_response_replay", "recovery_required",
-        "reconnect_sequence", "ordinary_status_resume_after",
-        "reconnect_query", "reconnect_status_query", "terminal_event_replay",
-        "reboot_clears_record", "ack_requires_terminal_event_confirmation",
-        "ack_clears_after_response_confirmation",
-        "reconnect_ack_without_replay",
+        "accepted_response_replay", "terminal_event_replay",
+        "reboot_clears_record", "ack_clears_after_response_confirmation",
+        "suppress_operation_indications_after_disconnect",
     }, set(), "wire_rules.operation_lifecycle")
     accepted = _string_list(lifecycle["accepted_commands"],
                             "operation_lifecycle.accepted_commands", True)
@@ -1477,22 +1463,12 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
             "discard_and_query", "OPERATION",
             "unconfirmed accepted responses must recover by query")
     require(not _boolean(lifecycle["accepted_response_replay"],
-                         "operation_lifecycle.accepted_response_replay") and
-            _boolean(lifecycle["recovery_required"],
-                     "operation_lifecycle.recovery_required"),
-            "OPERATION", "disconnect recovery must discard and mark recovery")
-    sequence = _string_list(lifecycle["reconnect_sequence"],
-                            "operation_lifecycle.reconnect_sequence", True)
-    require(sequence == ["GET_OPERATION", "GET_STATUS", "ACK_OPERATION"],
-            "OPERATION", "reconnect recovery sequence is fixed")
-    require(lifecycle["ordinary_status_resume_after"] ==
-            "ACK_OPERATION_CONFIRMATION", "OPERATION",
-            "ordinary status resumes after ACK response confirmation")
+                         "operation_lifecycle.accepted_response_replay"),
+            "OPERATION", "accepted responses must not be replayed")
     for key in (
         "new_operation_while_active_status",
         "new_operation_while_terminal_status", "get_operation_no_record_status",
-        "ack_active_status", "ack_before_terminal_event_status",
-        "ack_missing_or_mismatch_status",
+        "ack_active_status", "ack_missing_or_mismatch_status",
         "operation_id_exhausted_status",
     ):
         require(lifecycle[key] in statuses, "STATUS",
@@ -1506,20 +1482,16 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
             _boolean(lifecycle["reboot_clears_record"],
                      "operation_lifecycle.reboot_clears_record"),
             "OPERATION", "operation retention rules are inconsistent")
-    for key in ("must_reach_terminal", "terminal_event_generated_once",
-                "ack_requires_terminal_event_confirmation",
+    for key in ("must_reach_terminal", "terminal_event_at_most_once",
                 "ack_clears_after_response_confirmation",
-                "reconnect_ack_without_replay"):
+                "suppress_operation_indications_after_disconnect"):
         require(_boolean(lifecycle[key], f"operation_lifecycle.{key}"),
                 "OPERATION", f"operation_lifecycle.{key} must be true")
     operation_queries = {item["name"] for item in protocol["commands"]
                          if item.get("response_semantic") == "operation_record"}
-    status_queries = {item["name"] for item in protocol["commands"]
-                      if item.get("response_semantic") == "wifi_status"}
-    require({lifecycle["reconnect_query"]} == operation_queries and
-            {lifecycle["reconnect_status_query"]} == status_queries,
-            "OPERATION", "reconnect recovery queries are inconsistent")
-    operation_query = commands_by_name[lifecycle["reconnect_query"]]
+    require(len(operation_queries) == 1, "OPERATION",
+            "exactly one operation-record query is required")
+    operation_query = commands_by_name[next(iter(operation_queries))]
     require(lifecycle["get_operation_no_record_status"] in
             operation_query["allowed_statuses"], "STATUS",
             "operation query omits the no-record status")
@@ -1529,8 +1501,7 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
                     not item["response"]]
     require(len(ack_commands) == 1 and all(
         lifecycle[key] in ack_commands[0]["allowed_statuses"] for key in (
-            "ack_active_status", "ack_before_terminal_event_status",
-            "ack_missing_or_mismatch_status",
+            "ack_active_status", "ack_missing_or_mismatch_status",
         )
     ), "STATUS", "operation ACK omits a lifecycle status")
     read_queries = {
@@ -1553,16 +1524,15 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
             transport["operation_slot_occupied_status"] ==
             lifecycle["new_operation_while_active_status"] ==
             lifecycle["new_operation_while_terminal_status"] ==
-            lifecycle["ack_active_status"] ==
-            lifecycle["ack_before_terminal_event_status"] and
+            lifecycle["ack_active_status"] and
             transport["operation_id_exhausted_status"] ==
             lifecycle["operation_id_exhausted_status"], "OPERATION",
             "transport and lifecycle operation rules differ")
 
     sequencing = _mapping(rules["sequencing"], {
         "accepted_response_confirmation_precedes_terminal_event",
-        "final_status_confirmation_precedes_terminal_event_if_changed",
         "ack_response_confirmation_precedes_record_clear",
+        "terminal_event_omitted_if_acked",
         "terminal_event_record_correlation",
         "terminal_events",
     }, set(), "wire_rules.sequencing")
@@ -1571,13 +1541,13 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
         "sequencing.accepted_response_confirmation_precedes_terminal_event",
     ), "OPERATION", "accepted response must precede terminal delivery")
     require(_boolean(
-        sequencing["final_status_confirmation_precedes_terminal_event_if_changed"],
-        "sequencing.final_status_confirmation_precedes_terminal_event_if_changed",
-    ), "OPERATION", "final status must precede terminal delivery")
-    require(_boolean(
         sequencing["ack_response_confirmation_precedes_record_clear"],
         "sequencing.ack_response_confirmation_precedes_record_clear",
     ), "OPERATION", "ACK response confirmation must precede record removal")
+    require(_boolean(
+        sequencing["terminal_event_omitted_if_acked"],
+        "sequencing.terminal_event_omitted_if_acked",
+    ), "OPERATION", "ACK of a terminal record omits the terminal event")
     require(sequencing["terminal_event_record_correlation"] ==
             "full_payload", "OPERATION",
             "terminal events must correlate to the full operation record")
@@ -2192,12 +2162,14 @@ def _snapshot_tuple(value: Any, protocol: dict[str, Any], label: str
     return state, failure, profile
 
 
-def _snapshot_mapping(snapshot: tuple[str, str, str]) -> dict[str, Any]:
-    return {
-        "state": snapshot[0],
-        "failure": snapshot[1],
-        "profile_ssid": snapshot[2],
-    }
+def _retain_latest_ordinary(pending: tuple[str, str, str] | None,
+                            snapshot: tuple[str, str, str],
+                            features: set[str]) -> tuple[str, str, str]:
+    if pending == snapshot:
+        features.add("status_coalesced")
+    elif pending is not None:
+        features.add("status_latest_replaced")
+    return snapshot
 
 
 def _scan_records(value: Any, protocol: dict[str, Any], label: str,
@@ -2322,8 +2294,6 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
     ids_exhausted = False
     features: set[str] = set()
     reconnected = False
-    recovered_terminal = False
-    recovery_phase: str | None = None
     reboot_cleared_record = False
     current_snapshot = ("IDLE", "NONE", "")
     ordinary_pending: tuple[str, str, str] | None = None
@@ -2368,14 +2338,14 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
                         "phase": record_rules["active_phase"],
                         "failure": record_rules["active_failure"],
                         "accepted_confirmed": False,
-                        "status_changed": False, "status_confirmed": False,
+                        "status_changed": False,
                         "terminal_event_emitted": False,
-                        "terminal_event_confirmed": False,
+                        "terminal_omitted": False,
+                        "suppress_indications": False,
                         "pre_snapshot": current_snapshot,
                         "snapshot": current_snapshot,
                         "count": 0,
-                        "networks": [],
-                        "recovery_required": False}
+                        "networks": []}
                 pending_indication = "accepted_response"
             else:
                 require("operation_id" not in step, "OPERATION",
@@ -2404,9 +2374,9 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
                             step_label)
             operation_id = _integer(step["operation_id"],
                                     f"{step_label}.operation_id", 1, UINT32_MAX)
-            require(not (reconnected and slot is not None and
+            require(not (slot is not None and
                           slot["operation_id"] == operation_id and
-                          slot["recovery_required"]), "EXPECTATION",
+                          slot["suppress_indications"]), "EXPECTATION",
                     f"{step_label} accepted response must not be replayed")
             require(pending_indication == "accepted_response" and
                     slot is not None and slot["operation_id"] == operation_id,
@@ -2466,14 +2436,15 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
             slot["count"] = count
             slot["networks"] = networks
             current_snapshot = snapshot
-            slot["recovery_required"] |= not connected
+            if connected and ordinary_pending is not None:
+                ordinary_pending = _retain_latest_ordinary(
+                    ordinary_pending, snapshot, features
+                )
             if failure == success_failure:
                 features.add(f"succeeded:{slot['operation']}")
             elif failure != timeout_failure:
                 features.add(f"failed:{slot['operation']}")
             slot["status_changed"] = status_changed
-            if slot["status_changed"]:
-                features.add("final_status_latched")
             if failure == timeout_failure:
                 features.add(f"timeout:{slot['operation']}")
             authmode_edges = [edge for edge in
@@ -2490,11 +2461,9 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
                     f"{step_label} cannot queue an ordinary status now")
             snapshot = _snapshot_tuple(step["snapshot"], protocol,
                                        f"{step_label}.snapshot")
-            if ordinary_pending == snapshot:
-                features.add("status_coalesced")
-            elif ordinary_pending is not None:
-                features.add("status_latest_replaced")
-            ordinary_pending = snapshot
+            ordinary_pending = _retain_latest_ordinary(
+                ordinary_pending, snapshot, features
+            )
             current_snapshot = snapshot
         elif action == "emit_ordinary_status":
             step = _mapping(raw_step, {"action", "snapshot"}, set(),
@@ -2502,12 +2471,9 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
             snapshot = _snapshot_tuple(step["snapshot"], protocol,
                                        f"{step_label}.snapshot")
             require(connected and pending_indication is None and
-                    (slot is None or not slot["recovery_required"]) and
-                    (slot is None or
-                     slot["phase"] == record_rules["active_phase"] or
-                     slot["terminal_event_confirmed"]) and
                     ordinary_pending is not None and
-                    ordinary_pending == snapshot, "EXPECTATION",
+                    ordinary_pending == snapshot and
+                    snapshot == current_snapshot, "EXPECTATION",
                     f"{step_label} cannot emit the latest ordinary status")
             ordinary_pending = None
             pending_indication = "ordinary_status"
@@ -2522,22 +2488,18 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
                             step_label)
             snapshot = _snapshot_tuple(step["snapshot"], protocol,
                                        f"{step_label}.snapshot")
-            require(connected and slot is not None and
-                    slot["phase"] != record_rules["active_phase"] and
-                    slot["accepted_confirmed"] and slot["status_changed"] and
-                    not slot["status_confirmed"] and
-                    not slot["recovery_required"] and
-                    pending_indication is None and
-                    snapshot == slot["snapshot"], "EXPECTATION",
-                    f"{step_label} cannot emit the final status")
-            pending_indication = "final_status"
+            require(connected and pending_indication is None and
+                    snapshot == current_snapshot, "EXPECTATION",
+                    f"{step_label} cannot emit Wi-Fi status")
+            if ordinary_pending == snapshot:
+                ordinary_pending = None
+            pending_indication = "ordinary_status"
         elif action == "confirm_status":
             _mapping(raw_step, {"action"}, set(), step_label)
-            require(slot is not None and pending_indication == "final_status",
-                    "EXPECTATION", f"{step_label} has no final status to confirm")
-            slot["status_confirmed"] = True
+            require(pending_indication == "ordinary_status", "EXPECTATION",
+                    f"{step_label} has no Wi-Fi status to confirm")
             pending_indication = None
-            features.add("status_confirmation")
+            features.add("ordinary_status_confirmation")
         elif action == "emit_terminal":
             step = _mapping(raw_step, {
                 "action", "operation_id", "operation", "event", "failure",
@@ -2555,10 +2517,10 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
             require(connected and slot is not None and
                     slot["phase"] != record_rules["active_phase"] and
                     slot["accepted_confirmed"] and
-                    (not slot["status_changed"] or slot["status_confirmed"]) and
                     pending_indication is None and
                     not slot["terminal_event_emitted"] and
-                    not slot["recovery_required"] and
+                    not slot["terminal_omitted"] and
+                    not slot["suppress_indications"] and
                     operation_id == slot["operation_id"] and
                     operation == slot["operation"] and
                     failure == slot["failure"] and
@@ -2581,8 +2543,6 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
                         "UNKNOWN_FIELD",
                         f"{step_label} non-scan event has scan fields")
             features.add("terminal_payload_correlation")
-            if ordinary_pending is not None:
-                features.add("ordinary_status_deferred")
             slot["terminal_event_emitted"] = True
             pending_indication = "terminal_event"
             features.add("operation_correlation")
@@ -2591,7 +2551,6 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
             _mapping(raw_step, {"action"}, set(), step_label)
             require(slot is not None and pending_indication == "terminal_event",
                     "EXPECTATION", f"{step_label} has no terminal event to confirm")
-            slot["terminal_event_confirmed"] = True
             pending_indication = None
             features.add("terminal_confirmation")
         elif action == "query":
@@ -2622,32 +2581,9 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
                                          f"{step_label}.networks", count)
                 require(count == slot["count"] and networks == slot["networks"],
                         "EXPECTATION", f"{step_label} operation result differs")
-                if slot["recovery_required"] and reconnected:
-                    require(recovery_phase in {
-                        "operation_query", "await_terminal_query",
-                    }, "EXPECTATION",
-                            f"{step_label} is out of recovery query order")
-                    if recovery_phase == "operation_query":
-                        features.add("recovery_operation_query")
-                        features.add("disconnect_recovery")
-                        features.add(f"disconnect_recovery:{slot['operation']}")
-                        if slot["phase"] == record_rules["active_phase"]:
-                            # The first query records that the operation is
-                            # still active; a terminal record must be queried
-                            # again after completion.
-                            recovery_phase = "await_terminal_query"
-                        else:
-                            recovered_terminal = True
-                            recovery_phase = "status_query"
-                    else:
-                        require(slot["phase"] != record_rules["active_phase"],
-                                "EXPECTATION",
-                                f"{step_label} must re-query the terminal record")
-                        recovered_terminal = True
-                        recovery_phase = "status_query"
-                        features.add("recovery_operation_query")
-                        features.add("disconnect_recovery")
-                        features.add(f"disconnect_recovery:{slot['operation']}")
+                if slot["suppress_indications"] and reconnected:
+                    features.add("recovery_operation_query")
+                    features.add("disconnect_recovery")
             else:
                 require(set(step) == {"action", "expect"}, "UNKNOWN_FIELD",
                         f"{step_label} no-record query has record fields")
@@ -2665,24 +2601,10 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
             require(connected and pending_indication is None and
                     _string(step["expect"], f"{step_label}.expect") == "CURRENT",
                     "EXPECTATION", f"{step_label} status query is invalid")
-            if recovery_phase == "status_query":
-                # GET_STATUS is authoritative during recovery.  It may have
-                # advanced beyond the terminal record while the link was
-                # down, so do not compare it to the record's latched snapshot.
-                require(recovered_terminal and snapshot == current_snapshot,
-                        "EXPECTATION",
-                        f"{step_label} recovery snapshot differs")
-                recovery_phase = "ack"
-                features.add("recovery_status_query")
-            elif recovery_phase is not None:
-                fail("EXPECTATION", f"{step_label} status query is out of order")
-            else:
-                require(snapshot == current_snapshot, "EXPECTATION",
-                        f"{step_label} status snapshot differs")
+            require(snapshot == current_snapshot, "EXPECTATION",
+                    f"{step_label} status snapshot differs")
             if slot is not None and slot["phase"] == record_rules["active_phase"]:
                 features.add("status_query_while_active")
-            if recovered_terminal:
-                features.add("status_recovery")
         elif action == "ack":
             step = _mapping(raw_step, {"action", "operation_id", "expect"},
                             set(), step_label)
@@ -2700,30 +2622,22 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
             elif slot["phase"] == record_rules["active_phase"]:
                 actual = lifecycle["ack_active_status"]
                 reason = "active"
-            elif ((not slot["recovery_required"] and
-                   slot["terminal_event_confirmed"]) or
-                  (recovered_terminal and
-                   recovery_phase == "ack" and
-                   lifecycle["reconnect_ack_without_replay"])):
+            else:
                 actual = ok_status
                 reason = "accepted"
-            else:
-                actual = lifecycle["ack_before_terminal_event_status"]
-                reason = "terminal_unconfirmed"
             require(actual == expected, "EXPECTATION",
                     f"{step_label} expected {expected}, got {actual}")
             if reason == "active":
                 features.add("active_ack_busy")
-            elif reason == "terminal_unconfirmed":
-                features.add("terminal_ack_busy")
             elif reason == "missing_or_mismatch":
                 features.add("mismatched_ack_not_found")
             elif reason == "pending_indication":
                 features.add("unconfirmed_event_blocks_ack")
             elif reason == "accepted":
                 pending_indication = "ack_response"
-                if recovered_terminal:
-                    features.add("recovery_ack")
+                if not slot["terminal_event_emitted"]:
+                    slot["terminal_omitted"] = True
+                    features.add("omit_terminal_after_ack")
         elif action == "confirm_ack":
             _mapping(raw_step, {"action"}, set(), step_label)
             require(slot is not None and pending_indication == "ack_response",
@@ -2731,8 +2645,6 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
             acknowledged_operation = slot["operation"]
             slot = None
             pending_indication = None
-            recovered_terminal = False
-            recovery_phase = None
             features.add("terminal_ack")
             features.add("ack_confirmation_clears")
             features.add(f"terminal_ack:{acknowledged_operation}")
@@ -2740,36 +2652,27 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
             _mapping(raw_step, {"action"}, set(), step_label)
             require(connected, "EXPECTATION",
                     f"{step_label} is already disconnected")
-            # A retained operation must be re-established from queries after
-            # every disconnect.  An ordinary notification alone (with no
-            # operation slot) is only discarded and never creates recovery.
             if slot is not None:
-                slot["recovery_required"] = True
+                slot["suppress_indications"] = True
             if pending_indication == "accepted_response":
                 features.add("accepted_response_discarded")
             if pending_indication == "ack_response":
                 features.add("ack_disconnect_retains")
             if ordinary_pending is not None or pending_indication == "ordinary_status":
                 features.add("ordinary_status_discarded")
-            if pending_indication == "final_status":
-                features.add("final_status_discarded")
             ordinary_pending = None
             pending_indication = None
             connected = False
-            recovered_terminal = False
-            recovery_phase = None
         elif action == "reconnect":
             _mapping(raw_step, {"action"}, set(), step_label)
             require(not connected, "EXPECTATION",
                     f"{step_label} is already connected")
             connected = True
             reconnected = True
-            if slot is not None and slot["recovery_required"]:
-                recovery_phase = "operation_query"
         elif action == "expect_no_replay":
             _mapping(raw_step, {"action"}, set(), step_label)
             require(connected and reconnected and slot is not None and
-                    slot["recovery_required"] and
+                    slot["suppress_indications"] and
                     pending_indication is None, "EXPECTATION",
                     f"{step_label} expected no replayed indication")
             features.add("no_terminal_replay")
@@ -2792,8 +2695,6 @@ def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
             ids_exhausted = False
             connected = False
             reconnected = False
-            recovered_terminal = False
-            recovery_phase = None
             ordinary_pending = None
             features.add("reboot")
         else:
@@ -2971,10 +2872,12 @@ def validate_vectors(protocol: dict[str, Any],
     }
     require(required_routing <= routing_features, "COVERAGE",
             "routing scenarios do not cover protocol precedence")
-    lifecycle = protocol["wire_rules"]["operation_lifecycle"]
     recovery_commands = {
-        lifecycle["reconnect_query"], lifecycle["reconnect_status_query"],
-        *transport["operation_slot_controls"],
+        name for name in (
+            *transport["operation_slot_queries"],
+            *transport["operation_slot_controls"],
+        )
+        if _command_maps(protocol)[1][name]["requires_full_mtu"]
     }
     low_mtu_exceptions = {item["name"] for item in protocol["commands"]
                           if not item["requires_full_mtu"]}
@@ -3089,10 +2992,9 @@ def validate_vectors(protocol: dict[str, Any],
         ids.add(case_id)
         operation_features |= _validate_operation_case(protocol, raw_case)
     required_features = {
-        "accepted_confirmation", "status_confirmation",
-        "terminal_confirmation", "operation_correlation",
-        "disconnect_recovery", "status_recovery", "no_terminal_replay",
-        "active_ack_busy", "terminal_ack_busy", "mismatched_ack_not_found",
+        "accepted_confirmation", "terminal_confirmation",
+        "operation_correlation", "disconnect_recovery", "no_terminal_replay",
+        "active_ack_busy", "mismatched_ack_not_found",
         "unconfirmed_event_blocks_ack", "active_blocks_new",
         "terminal_blocks_new", "status_query_while_active",
         "ack_confirmation_clears", "ack_disconnect_retains",
@@ -3100,20 +3002,10 @@ def validate_vectors(protocol: dict[str, Any],
         "id_exhaustion_empty", "id_exhaustion_no_record",
         "status_coalesced", "status_latest_replaced",
         "ordinary_status_confirmation", "ordinary_status_discarded",
-        "ordinary_status_deferred", "accepted_response_discarded",
-        "final_status_latched", "final_status_discarded",
-        "connect_authentication_failure",
+        "accepted_response_discarded", "connect_authentication_failure",
         "terminal_payload_correlation", "accepted_response_no_replay",
-        "recovery_operation_query", "recovery_status_query", "recovery_ack",
+        "recovery_operation_query", "omit_terminal_after_ack",
         *{f"postcondition:{operation}" for operation in
-          protocol["wire_rules"]["operation_lifecycle"]["accepted_commands"]},
-        *{f"timeout:{operation}" for operation in
-          protocol["wire_rules"]["operation_lifecycle"]["accepted_commands"]},
-        *{f"failed:{operation}" for operation in
-          protocol["wire_rules"]["operation_lifecycle"]["accepted_commands"]},
-        *{f"disconnect_recovery:{operation}" for operation in
-          protocol["wire_rules"]["operation_lifecycle"]["accepted_commands"]},
-        *{f"terminal_ack:{operation}" for operation in
           protocol["wire_rules"]["operation_lifecycle"]["accepted_commands"]},
         *{f"succeeded:{operation}" for operation in
           protocol["wire_rules"]["operation_lifecycle"]["accepted_commands"]},

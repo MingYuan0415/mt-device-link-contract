@@ -99,13 +99,21 @@ ATT `0x13` instead. Ordinary non-success command responses have no payload.
 | ---: | --- | --- |
 | 1 | `GET_INFO` | Link, firmware, pairing-window, and required-MTU fields |
 | 2 | `GET_STATUS` | Current Wi-Fi snapshot |
-| 3 | `SCAN` | `operation_id`, followed by `SCAN_COMPLETE` |
-| 4 | `SET_CREDENTIALS` | `operation_id`, followed by `OPERATION_COMPLETE` |
-| 5 | `CONNECT` | `operation_id`, followed by `OPERATION_COMPLETE` |
-| 6 | `DISCONNECT` | `operation_id`, followed by `OPERATION_COMPLETE` |
-| 7 | `FORGET` | `operation_id`, followed by `OPERATION_COMPLETE` |
+| 3 | `SCAN` | `operation_id` |
+| 4 | `SET_CREDENTIALS` | `operation_id` |
+| 5 | `CONNECT` | `operation_id` |
+| 6 | `DISCONNECT` | `operation_id` |
+| 7 | `FORGET` | `operation_id` |
 | 8 | `GET_OPERATION` | The current active or retained terminal record |
 | 9 | `ACK_OPERATION` | Clears the matching retained terminal record |
+
+Accepted asynchronous commands return `operation_id`. The matching terminal
+event is sent at most once and is omitted if the client ACKs first or if the
+ACCEPTED indication was discarded on disconnect.
+
+Command status codes `UNAVAILABLE` and `STORAGE` keep their numeric values but
+are not admission results. `UNAVAILABLE` is a `wifi_state`. `STORAGE` is a
+`wifi_failure` and a terminal failure for `SET_CREDENTIALS` and `FORGET`.
 
 The events are:
 
@@ -174,52 +182,44 @@ exhausted, new asynchronous commands return an empty `INTERNAL` response until
 reboot. While that boot continues, every accepted operation eventually reaches
 `SUCCEEDED` or `FAILED` within an implementation-defined but finite timeout.
 The timeout starts when the operation is accepted and occupies the operation
-slot. A timeout produces the `TIMEOUT` failure and one terminal record/event;
-the protocol does not set an internal retry algorithm or timeout duration.
+slot. A timeout produces the `TIMEOUT` failure and a terminal record; the
+protocol does not set an internal retry algorithm or timeout duration.
 
 `GET_OPERATION` returns the slot's operation, phase, failure and retained scan
-results. Every terminal event must match that retained record in operation ID,
-operation, failure, and (for `SCAN_COMPLETE`) count and complete network list.
-With no record it returns `NOT_FOUND`. `ACK_OPERATION` applies only to
-the matching terminal record; an active record or a terminal event that has not
-yet been confirmed on the current connection is not acknowledged, and a
-missing or mismatched ID returns `NOT_FOUND`.
+results. A terminal event, if sent, must match that retained record in
+operation ID, operation, failure, and (for `SCAN_COMPLETE`) count and complete
+network list. With no record it returns `NOT_FOUND`.
+
+`ACK_OPERATION` uses one rule on every connection: a matching terminal record
+returns `OK`, an active record returns `BUSY`, and a missing or mismatched ID
+returns `NOT_FOUND`. An outstanding indication still blocks the Write with ATT
+`0xfe`. ACK does not require a prior `GET_STATUS`, a terminal indication, or a
+recovery sequence. If the client ACKs after the record is terminal but before
+the terminal event is sent, the device omits that event. A successful ACK does
+not remove the record until the ACK response indication itself is confirmed, so
+a disconnect before that confirmation leaves the record recoverable.
 
 A BLE disconnect neither cancels the operation nor clears its record. Accepted
-responses, final status indications, and terminal events are never replayed.
+responses, `WIFI_STATUS` indications, and terminal events are never replayed.
 If an accepted response was not confirmed, it is discarded and the operation
-continues; this is a recovery condition, not a cancellation or replay request.
-After reconnecting, the bonded client first negotiates MTU 498 and must perform
-the strict recovery sequence `GET_OPERATION -> GET_STATUS -> ACK_OPERATION`.
-If the first `GET_OPERATION` result is `ACTIVE`, the client waits for completion
-and repeats `GET_OPERATION` to obtain the terminal record before continuing to
-`GET_STATUS` and `ACK_OPERATION`.
-The same sequence applies when a final status or terminal event was lost.
-`GET_OPERATION` and `GET_STATUS` are authoritative; `ACK_OPERATION` after this
-sequence does not require a terminal indication confirmation on the new
-connection. Ordinary notifications resume after the recovery sequence has
-completed, including ACK response confirmation. A reboot
-clears the RAM record, after which `GET_OPERATION` returns `NOT_FOUND` and only
-the current `GET_STATUS` snapshot remains available.
+continues. Because an accepted response must be confirmed before its terminal
+event, that event is also omitted on the new connection; the client reads
+`GET_OPERATION`. After reconnecting, the bonded client should negotiate
+MTU 498, then read `GET_OPERATION` and `GET_STATUS` and ACK a terminal
+record if one exists.
+That order is a client procedure; the device does not reject query or ACK
+reordering beyond the ACK rule above. If `GET_OPERATION` is `ACTIVE`, the
+client waits and queries again. A reboot clears the RAM record, after which
+`GET_OPERATION` returns `NOT_FOUND` and only the current `GET_STATUS` snapshot
+remains available.
 
-An accepted response must be confirmed before its terminal event. Ordinary
-`WIFI_STATUS` updates are best-effort notifications: only the latest pending
-full snapshot is retained, duplicate `(state, failure, profile_ssid)` snapshots
-are coalesced, and pending ordinary updates may be discarded on disconnect.
-`GET_STATUS` is authoritative. If the operation changes the Wi-Fi snapshot, its
-final status is latched and confirmed before the terminal event; ordinary
-updates cannot replace that final status. After an operation enters a terminal
-phase, an ordinary snapshot may continue to replace the retained latest
-snapshot, but it is deferred until the terminal event has been sent and
-confirmed. Recovery/no-replay connections may resume ordinary notifications only
-after the retained record and status have been queried and the recovery
-`ACK_OPERATION` response has been confirmed. While any
-indication is outstanding, a new ACK Write is rejected by ATT `0xfe`. On the
-current connection, `ACK_OPERATION` is accepted only after the terminal
-indication is confirmed; after a disconnect, the queried retained record may be
-acknowledged without replay. A successful ACK does not remove the record until
-the ACK response indication itself is confirmed, so a disconnect before that
-confirmation leaves the record recoverable.
+An accepted response must be confirmed before its terminal event. `WIFI_STATUS`
+updates are best-effort notifications: only the latest pending full snapshot is
+retained, duplicate `(state, failure, profile_ssid)` snapshots are coalesced,
+and pending ordinary updates may be discarded on disconnect. `GET_STATUS` is
+authoritative and reflects the current snapshot immediately. `WIFI_STATUS` and
+the terminal event are not ordered relative to each other. Ordinary
+notifications may be sent after reconnect without waiting for ACK.
 
 ## Verification status
 
@@ -229,7 +229,7 @@ security gates, frame markers, 498/495 transport boundaries, enum and status
 values, operation set, and ATT error names and values are frozen for v1;
 changing them requires a new profile/version. Numeric Comparison, local bond
 clear and reconnect, ATT MTU 498, DLE, 495/496-byte boundaries, disconnect
-recovery, finite operation timeouts, and on-air interoperability have not yet
-been validated on firmware and a mobile client.
+query recovery, finite operation timeouts, and on-air interoperability have not
+yet been validated on firmware and a mobile client.
 
 [bluetooth-sm]: https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/Core_v6.3/out/en/host/security-manager-specification.html

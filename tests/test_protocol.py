@@ -314,8 +314,8 @@ class SecurityAndTransportTest(unittest.TestCase):
                 "operation_id_reuse_within_boot", True
             ), "OPERATION"),
             (lambda p: p["protocol"]["transport"]["low_mtu"].__setitem__(
-                "recovery_requires_full_mtu", False
-            ), "OPERATION"),
+                "other_commands_status", "BUSY"
+            ), "STATUS"),
         ]
         for mutation, expected in mutations:
             with self.subTest(expected=expected):
@@ -445,6 +445,40 @@ class ContractBoundaryTest(unittest.TestCase):
         self.protocol = load_protocol()
         self.vectors = load_vectors()
 
+    def test_admission_statuses_are_limited_to_defined_gates(self) -> None:
+        for command in self.protocol["commands"]:
+            with self.subTest(command=command["name"]):
+                self.assertNotIn("UNAVAILABLE", command["allowed_statuses"])
+        connect = next(item for item in self.protocol["commands"]
+                       if item["name"] == "CONNECT")
+        self.assertNotIn("STORAGE", connect["allowed_statuses"])
+        self.assertNotIn(
+            "STORAGE",
+            self.protocol["wire_rules"]["operation_result"]["failure_matrix"][
+                "CONNECT"
+            ],
+        )
+        for name in ("SET_CREDENTIALS", "FORGET"):
+            command = next(item for item in self.protocol["commands"]
+                           if item["name"] == name)
+            self.assertNotIn("STORAGE", command["allowed_statuses"])
+
+        candidate = copy.deepcopy(self.protocol)
+        scan = next(item for item in candidate["commands"]
+                    if item["name"] == "SCAN")
+        scan["allowed_statuses"].append("UNAVAILABLE")
+        self.assertEqual(
+            contract_error_code(validate_protocol, candidate), "STATUS"
+        )
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["wire_rules"]["operation_result"]["failure_matrix"][
+            "CONNECT"
+        ].append("STORAGE")
+        self.assertEqual(
+            contract_error_code(validate_protocol, candidate), "OPERATION"
+        )
+
     def test_wifi_implementation_policy_keys_are_not_normative(self) -> None:
         rules = self.protocol["wire_rules"]
         self.assertNotIn("admission", rules)
@@ -485,15 +519,15 @@ class ContractBoundaryTest(unittest.TestCase):
 
         candidate = copy.deepcopy(self.protocol)
         candidate["wire_rules"]["wifi_status"]["delivery"][
-            "terminal_event_priority"
-        ] = False
+            "authoritative_query"
+        ] = "GET_INFO"
         self.assertEqual(contract_error_code(validate_protocol, candidate),
                          "OPERATION")
 
         candidate = copy.deepcopy(self.protocol)
         candidate["wire_rules"]["wifi_status"]["delivery"][
-            "ordinary_updates_while_terminal_pending"
-        ] = "send"
+            "pending_updates_on_disconnect"
+        ] = "replay"
         self.assertEqual(contract_error_code(validate_protocol, candidate),
                          "OPERATION")
 
@@ -551,7 +585,7 @@ class ContractBoundaryTest(unittest.TestCase):
             "reconnect_sequence"
         ] = ["GET_STATUS", "GET_OPERATION", "ACK_OPERATION"]
         self.assertEqual(contract_error_code(validate_protocol, candidate),
-                         "OPERATION")
+                         "UNKNOWN_FIELD")
 
         candidate = copy.deepcopy(self.protocol)
         candidate["wire_rules"]["sequencing"][
@@ -578,10 +612,13 @@ class ContractBoundaryTest(unittest.TestCase):
                 "must_reach_terminal", False
             ),
             lambda p: p["wire_rules"]["operation_lifecycle"].__setitem__(
-                "ack_requires_terminal_event_confirmation", False
+                "suppress_operation_indications_after_disconnect", False
             ),
             lambda p: p["wire_rules"]["operation_lifecycle"].__setitem__(
                 "ack_clears_after_response_confirmation", False
+            ),
+            lambda p: p["wire_rules"]["sequencing"].__setitem__(
+                "terminal_event_omitted_if_acked", False
             ),
             lambda p: p["wire_rules"]["operation_record"].__setitem__(
                 "failed_result_count", 1
@@ -826,10 +863,7 @@ class VectorTest(unittest.TestCase):
             "operation": "DISCONNECT", "failure": "NONE",
             "count": 0, "networks": [],
         })
-        self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, candidate),
-            "EXPECTATION",
-        )
+        validate_vectors(self.protocol, candidate)
 
         candidate = copy.deepcopy(self.vectors)
         scan_case = next(item for item in candidate["wifi_cases"]
@@ -848,10 +882,7 @@ class VectorTest(unittest.TestCase):
         ]
         second_ack = ack_indexes[1]
         del scenario["steps"][second_ack - 2:second_ack]
-        self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, candidate),
-            "EXPECTATION",
-        )
+        validate_vectors(self.protocol, candidate)
 
         candidate = copy.deepcopy(self.vectors)
         scenario = next(item for item in candidate["operation_cases"]
@@ -907,17 +938,17 @@ class VectorTest(unittest.TestCase):
             "EXPECTATION",
         )
 
-    def test_accepted_response_disconnect_recovery_requires_query(self) -> None:
+    def test_ack_of_active_record_is_busy(self) -> None:
         candidate = copy.deepcopy(self.vectors)
         scenario = next(
             item for item in candidate["operation_cases"]
             if item["id"] == "accepted-response-disconnect-recovery"
         )
-        query_index = next(
+        complete_index = next(
             index for index, step in enumerate(scenario["steps"])
-            if step["action"] == "query"
+            if step["action"] == "complete"
         )
-        scenario["steps"].insert(query_index, {
+        scenario["steps"].insert(complete_index, {
             "action": "ack", "operation_id": 50, "expect": "OK",
         })
         self.assertEqual(
@@ -925,11 +956,74 @@ class VectorTest(unittest.TestCase):
             "EXPECTATION",
         )
 
-    def test_terminal_priority_defers_ordinary_status_emission(self) -> None:
+    def test_complete_replaces_pending_ordinary_status(self) -> None:
+        idle = {"state": "IDLE", "failure": "NONE", "profile_ssid": ""}
+        connected = {
+            "state": "CONNECTED", "failure": "NONE", "profile_ssid": "Home",
+        }
+
         candidate = copy.deepcopy(self.vectors)
         scenario = next(
             item for item in candidate["operation_cases"]
-            if item["id"] == "ordinary-status-deferred-by-terminal"
+            if item["id"] == "connected-terminal-and-ack-order"
+        )
+        complete_index = next(
+            index for index, step in enumerate(scenario["steps"])
+            if step["action"] == "complete"
+        )
+        scenario["steps"].insert(complete_index, {
+            "action": "queue_ordinary_status",
+            "snapshot": idle,
+        })
+        emit_index = next(
+            index for index, step in enumerate(scenario["steps"])
+            if step["action"] == "emit_status"
+        )
+        scenario["steps"].insert(emit_index, {
+            "action": "emit_ordinary_status",
+            "snapshot": idle,
+        })
+        self.assertEqual(
+            contract_error_code(validate_vectors, self.protocol, candidate),
+            "EXPECTATION",
+        )
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] == "connected-terminal-and-ack-order"
+        )
+        complete_index = next(
+            index for index, step in enumerate(scenario["steps"])
+            if step["action"] == "complete"
+        )
+        scenario["steps"].insert(complete_index, {
+            "action": "queue_ordinary_status",
+            "snapshot": idle,
+        })
+        emit_index = next(
+            index for index, step in enumerate(scenario["steps"])
+            if step["action"] == "emit_status"
+        )
+        scenario["steps"][emit_index] = {
+            "action": "emit_ordinary_status",
+            "snapshot": connected,
+        }
+        validate_vectors(self.protocol, candidate)
+
+    def test_ordinary_status_may_precede_terminal_event(self) -> None:
+        scenario = next(
+            item for item in self.vectors["operation_cases"]
+            if item["id"] == "ordinary-status-before-terminal"
+        )
+        actions = [step["action"] for step in scenario["steps"]]
+        self.assertLess(actions.index("emit_ordinary_status"),
+                        actions.index("emit_terminal"))
+
+        candidate = copy.deepcopy(self.vectors)
+        scenario = next(
+            item for item in candidate["operation_cases"]
+            if item["id"] == "ordinary-status-before-terminal"
         )
         terminal_index = next(
             index for index, step in enumerate(scenario["steps"])
@@ -1027,10 +1121,7 @@ class VectorTest(unittest.TestCase):
         scenario["steps"][query_index], scenario["steps"][status_index] = (
             scenario["steps"][status_index], scenario["steps"][query_index]
         )
-        self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, candidate),
-            "EXPECTATION",
-        )
+        validate_vectors(self.protocol, candidate)
 
         candidate = copy.deepcopy(self.vectors)
         scenario = next(item for item in candidate["operation_cases"]
@@ -1134,7 +1225,7 @@ class VectorTest(unittest.TestCase):
         candidate = copy.deepcopy(self.vectors)
         scenario = next(
             item for item in candidate["operation_cases"]
-            if item["id"] == "final-status-ordinary-deferred"
+            if item["id"] == "ordinary-status-before-terminal"
         )
         terminal_index = next(
             index for index, step in enumerate(scenario["steps"])
@@ -1222,25 +1313,7 @@ class VectorTest(unittest.TestCase):
             "snapshot": {"state": "IDLE", "failure": "NONE",
                          "profile_ssid": ""},
         })
-        self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, candidate),
-            "EXPECTATION",
-        )
-
-        candidate = copy.deepcopy(self.vectors)
-        scenario = next(
-            item for item in candidate["operation_cases"]
-            if item["id"] == "accepted-response-disconnect-recovery"
-        )
-        status_index = next(i for i, step in enumerate(scenario["steps"])
-                            if step["action"] == "status_query")
-        scenario["steps"].insert(status_index, {
-            "action": "ack", "operation_id": 50, "expect": "OK",
-        })
-        self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, candidate),
-            "EXPECTATION",
-        )
+        validate_vectors(self.protocol, candidate)
 
         candidate = copy.deepcopy(self.vectors)
         scenario = next(
@@ -1260,32 +1333,17 @@ class VectorTest(unittest.TestCase):
         candidate = copy.deepcopy(self.vectors)
         scenario = next(
             item for item in candidate["operation_cases"]
-            if item["id"] == "ordinary-update-retained-during-recovery"
+            if item["id"] == "ack-omits-terminal-event"
         )
-        ordinary = copy.deepcopy(next(
-            step for step in scenario["steps"]
-            if step["action"] == "emit_ordinary_status"
-        ))
-        confirm_index = next(i for i, step in enumerate(scenario["steps"])
-                             if step["action"] == "confirm_ack")
-        scenario["steps"].insert(confirm_index, ordinary)
-        self.assertEqual(
-            contract_error_code(validate_vectors, self.protocol, candidate),
-            "EXPECTATION",
+        confirm_index = next(
+            index for index, step in enumerate(scenario["steps"])
+            if step["action"] == "confirm_ack"
         )
-
-        candidate = copy.deepcopy(self.vectors)
-        scenario = next(
-            item for item in candidate["operation_cases"]
-            if item["id"] == "ordinary-update-retained-during-recovery"
-        )
-        ordinary = copy.deepcopy(next(
-            step for step in scenario["steps"]
-            if step["action"] == "emit_ordinary_status"
-        ))
-        ack_index = next(i for i, step in enumerate(scenario["steps"])
-                         if step["action"] == "ack")
-        scenario["steps"].insert(ack_index, ordinary)
+        scenario["steps"].insert(confirm_index, {
+            "action": "emit_terminal", "operation_id": 71,
+            "operation": "SCAN", "event": "SCAN_COMPLETE",
+            "failure": "NONE", "count": 0, "networks": [],
+        })
         self.assertEqual(
             contract_error_code(validate_vectors, self.protocol, candidate),
             "EXPECTATION",

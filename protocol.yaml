@@ -103,7 +103,6 @@ protocol:
     low_mtu:
       get_info_minimum_att_mtu: 23
       full_profile_required_att_mtu: 498
-      recovery_requires_full_mtu: true
       other_commands_status: MTU_TOO_SMALL
 
   att_errors:
@@ -290,7 +289,7 @@ commands:
     response: [{name: operation_id, wire: u32, nonzero: true}]
     asynchronous: true
     completion_event: SCAN_COMPLETE
-    allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, UNAVAILABLE, MTU_TOO_SMALL, INTERNAL]
+    allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, MTU_TOO_SMALL, INTERNAL]
     requires_full_mtu: true
 
   - id: 4
@@ -316,7 +315,7 @@ commands:
     response: [{name: operation_id, wire: u32, nonzero: true}]
     asynchronous: true
     completion_event: OPERATION_COMPLETE
-    allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, STORAGE, UNAVAILABLE, MTU_TOO_SMALL, INTERNAL]
+    allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, MTU_TOO_SMALL, INTERNAL]
     requires_full_mtu: true
 
   - id: 5
@@ -325,7 +324,7 @@ commands:
     response: [{name: operation_id, wire: u32, nonzero: true}]
     asynchronous: true
     completion_event: OPERATION_COMPLETE
-    allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, NOT_FOUND, UNAVAILABLE, STORAGE, MTU_TOO_SMALL, INTERNAL]
+    allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, NOT_FOUND, MTU_TOO_SMALL, INTERNAL]
     requires_full_mtu: true
 
   - id: 6
@@ -334,7 +333,7 @@ commands:
     response: [{name: operation_id, wire: u32, nonzero: true}]
     asynchronous: true
     completion_event: OPERATION_COMPLETE
-    allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, UNAVAILABLE, MTU_TOO_SMALL, INTERNAL]
+    allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, MTU_TOO_SMALL, INTERNAL]
     requires_full_mtu: true
 
   - id: 7
@@ -343,7 +342,7 @@ commands:
     response: [{name: operation_id, wire: u32, nonzero: true}]
     asynchronous: true
     completion_event: OPERATION_COMPLETE
-    allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, NOT_FOUND, STORAGE, UNAVAILABLE, MTU_TOO_SMALL, INTERNAL]
+    allowed_statuses: [ACCEPTED, INVALID_ARGUMENT, BUSY, NOT_FOUND, MTU_TOO_SMALL, INTERNAL]
     requires_full_mtu: true
 
   - id: 8
@@ -415,12 +414,7 @@ wire_rules:
     malformed_payload_status: INVALID_ARGUMENT
 
   text:
-    ssid_encoding: utf8
-    ssid_forbidden_unicode_categories: [Cc]
     ssid_normalization: none
-    password_encoding: printable_ascii
-    password_min_octet: 0x20
-    password_max_octet: 0x7e
     credential_password_rules:
       OPEN:
         mode: empty
@@ -457,9 +451,6 @@ wire_rules:
       duplicate_updates: coalesce
       pending_updates_on_disconnect: discard
       authoritative_query: GET_STATUS
-      final_update_latched: true
-      terminal_event_priority: true
-      ordinary_updates_while_terminal_pending: defer
 
   scan_result:
     scan_operation: SCAN
@@ -487,7 +478,7 @@ wire_rules:
     failure_matrix:
       SCAN: [NONE, TIMEOUT, RADIO, INTERNAL]
       SET_CREDENTIALS: [NONE, STORAGE, TIMEOUT, INTERNAL]
-      CONNECT: [NONE, AUTHENTICATION, AP_NOT_FOUND, TIMEOUT, LINK_LOST, RADIO, STORAGE, INTERNAL]
+      CONNECT: [NONE, AUTHENTICATION, AP_NOT_FOUND, TIMEOUT, LINK_LOST, RADIO, INTERNAL]
       DISCONNECT: [NONE, RADIO, TIMEOUT, INTERNAL]
       FORGET: [NONE, STORAGE, RADIO, TIMEOUT, INTERNAL]
     success_postconditions:
@@ -567,32 +558,25 @@ wire_rules:
     finite_termination_required: true
     termination_timeout: implementation_defined_finite
     timeout_failure: TIMEOUT
-    terminal_event_generated_once: true
+    terminal_event_at_most_once: true
     accepted_response_disconnect_policy: discard_and_query
     accepted_response_replay: false
-    recovery_required: true
-    reconnect_sequence: [GET_OPERATION, GET_STATUS, ACK_OPERATION]
-    ordinary_status_resume_after: ACK_OPERATION_CONFIRMATION
     new_operation_while_active_status: BUSY
     new_operation_while_terminal_status: BUSY
     get_operation_no_record_status: NOT_FOUND
     ack_active_status: BUSY
-    ack_before_terminal_event_status: BUSY
     ack_missing_or_mismatch_status: NOT_FOUND
     ack_terminal_clears_record: true
     disconnect_clears_record: false
-    reconnect_query: GET_OPERATION
-    reconnect_status_query: GET_STATUS
     terminal_event_replay: false
     reboot_clears_record: true
-    ack_requires_terminal_event_confirmation: true
     ack_clears_after_response_confirmation: true
-    reconnect_ack_without_replay: true
+    suppress_operation_indications_after_disconnect: true
 
   sequencing:
     accepted_response_confirmation_precedes_terminal_event: true
-    final_status_confirmation_precedes_terminal_event_if_changed: true
     ack_response_confirmation_precedes_record_clear: true
+    terminal_event_omitted_if_acked: true
     terminal_event_record_correlation: full_payload
     terminal_events:
       SCAN: SCAN_COMPLETE
