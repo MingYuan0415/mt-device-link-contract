@@ -335,6 +335,9 @@ class SecurityAndTransportTest(unittest.TestCase):
         errors = self.protocol["protocol"]["att_errors"]
         self.assertEqual(errors["security_gate_error"],
                          "insufficient_authentication")
+        self.assertEqual(errors["client_security_gate_errors"], [
+            "insufficient_authentication", "insufficient_encryption",
+        ])
         self.assertEqual(errors["profile_cccd_not_enabled"], 0xfd)
         self.assertEqual(errors["profile_tx_indication_pending"], 0xfe)
         self.assertEqual(errors["gatt_precedence"][0], "security_gate")
@@ -343,6 +346,13 @@ class SecurityAndTransportTest(unittest.TestCase):
         candidate["protocol"]["att_errors"][
             "security_gate_error"
         ] = "insufficient_encryption"
+        self.assertEqual(contract_error_code(validate_protocol, candidate),
+                         "SECURITY")
+
+        candidate = copy.deepcopy(self.protocol)
+        candidate["protocol"]["att_errors"][
+            "client_security_gate_errors"
+        ] = ["insufficient_authentication"]
         self.assertEqual(contract_error_code(validate_protocol, candidate),
                          "SECURITY")
 
@@ -542,7 +552,7 @@ class ContractBoundaryTest(unittest.TestCase):
                          "VALUE")
 
         candidate = copy.deepcopy(self.protocol)
-        candidate["wire_rules"]["scan_result"]["duplicate_ssid_policy"] = "drop"
+        candidate["wire_rules"]["scan_result"]["duplicate_ssid_policy"] = "preserve"
         self.assertEqual(contract_error_code(validate_protocol, candidate),
                          "VALUE")
 
@@ -554,7 +564,7 @@ class ContractBoundaryTest(unittest.TestCase):
         candidate = copy.deepcopy(self.protocol)
         candidate["wire_rules"]["scan_result"]["representable_security"][
             "PERSONAL"
-        ] = ["WIFI_AUTH_WPA2_PSK"]
+        ] = ["OPEN"]
         self.assertEqual(contract_error_code(validate_protocol, candidate),
                          "VALUE")
 
@@ -1048,14 +1058,20 @@ class VectorTest(unittest.TestCase):
         candidate = copy.deepcopy(self.vectors)
         scan_case = next(item for item in candidate["wifi_cases"]
                          if item["case"] == "scan_filtering_under_limit")
-        duplicate = copy.deepcopy(scan_case["expect"]["filtered_records"][0])
-        duplicate["rssi_dbm"] = -70
         scan_case["expect"]["input"].append({
-            "ssid": "home", "authmode": "WIFI_AUTH_WPA2_PSK",
+            "ssid": "home", "security": "PERSONAL",
             "rssi_dbm": -70,
         })
-        scan_case["expect"]["filtered_records"].append(duplicate)
-        scan_case["expect"]["count"] += 1
+        validate_vectors(self.protocol, candidate)
+
+        candidate = copy.deepcopy(self.vectors)
+        scan_case = next(item for item in candidate["wifi_cases"]
+                         if item["case"] == "scan_filtering_under_limit")
+        scan_case["expect"]["input"].append({
+            "ssid": "home", "security": "PERSONAL",
+            "rssi_dbm": -10,
+        })
+        scan_case["expect"]["filtered_records"][0]["rssi_dbm"] = -10
         validate_vectors(self.protocol, candidate)
 
         candidate = copy.deepcopy(self.vectors)
@@ -1094,7 +1110,7 @@ class VectorTest(unittest.TestCase):
         scan_case = next(item for item in candidate["wifi_cases"]
                          if item["case"] == "scan_filtering_under_limit")
         scan_case["expect"]["input"].append({
-            "ssid_hex": "ff", "authmode": "WIFI_AUTH_OPEN", "rssi_dbm": -10,
+            "ssid_hex": "ff", "security": "OPEN", "rssi_dbm": -10,
         })
         # The invalid raw SSID is filtered, so the existing result remains valid.
         validate_vectors(self.protocol, candidate)

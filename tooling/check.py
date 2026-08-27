@@ -131,12 +131,19 @@ FROZEN_V1 = {
                "OPERATION_COMPLETE": 3},
     "att_errors": {
         "security_gate_error": "insufficient_authentication",
+        "client_security_gate_errors": [
+            "insufficient_authentication",
+            "insufficient_encryption",
+        ],
         "insufficient_authentication": 0x05,
         "insufficient_encryption": 0x0f,
         "invalid_attribute_value_length": 0x0d,
         "value_not_allowed": 0x13,
         "profile_cccd_not_enabled": 0xfd,
         "profile_tx_indication_pending": 0xfe,
+    },
+    "firmware_version": {
+        "kind": "product_compatibility",
     },
     "operation": {
         "accepted_commands": [
@@ -643,9 +650,14 @@ def _validate_frozen_v1(root: dict[str, Any]) -> None:
                     "enums.wifi_security")
     errors = data["att_errors"]
     for key, expected in FROZEN_V1["att_errors"].items():
-        code = "SECURITY" if key == "security_gate_error" else "VALUE"
+        code = "SECURITY" if key in {
+            "security_gate_error", "client_security_gate_errors",
+        } else "VALUE"
         _require_frozen(errors.get(key), expected, code,
                         f"protocol.att_errors.{key}")
+    _require_frozen(data.get("firmware_version"),
+                    FROZEN_V1["firmware_version"], "VALUE",
+                    "protocol.firmware_version")
     lifecycle = root["wire_rules"]["operation_lifecycle"]
     _require_frozen(lifecycle.get("accepted_commands"),
                     FROZEN_V1["operation"]["accepted_commands"],
@@ -837,7 +849,7 @@ def _validate_transport(value: Any) -> dict[str, Any]:
 def _validate_att_errors(value: Any) -> dict[str, Any]:
     errors = _mapping(value, {
         "insufficient_authentication", "insufficient_encryption",
-        "security_gate_error",
+        "security_gate_error", "client_security_gate_errors",
         "invalid_attribute_value_length", "value_not_allowed",
         "profile_cccd_not_enabled", "profile_tx_indication_pending",
         "gatt_precedence", "application_precedence",
@@ -858,6 +870,11 @@ def _validate_att_errors(value: Any) -> dict[str, Any]:
             "ATT error values must be unique")
     require(errors["security_gate_error"] == "insufficient_authentication",
             "SECURITY", "NimBLE SC-only security gate must use 0x05")
+    client_gate = _string_list(errors["client_security_gate_errors"],
+                               "att_errors.client_security_gate_errors", True)
+    require(client_gate == [
+        "insufficient_authentication", "insufficient_encryption",
+    ], "SECURITY", "clients must accept both 0x05 and 0x0f security-gate errors")
     gatt_precedence = _string_list(errors["gatt_precedence"],
                                    "att_errors.gatt_precedence", True)
     require(gatt_precedence == [
@@ -1237,7 +1254,7 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
         "success_failure", "failure_values", "failure_has_empty_results",
         "maximum_records", "representable_security",
         "unsupported_security_policy", "empty_ssid_policy",
-        "invalid_ssid_policy", "duplicate_ssid_policy",
+        "invalid_ssid_policy", "duplicate_ssid_policy", "duplicate_keep",
         "count_semantics", "count_after_filter",
     }, set(), "wire_rules.scan_result")
     require(scan["success_failure"] in enums["wifi_failure"], "ENUM",
@@ -1263,16 +1280,14 @@ def _validate_wire_rules(protocol: dict[str, Any], statuses: dict[str, int],
     representable = _mapping(scan["representable_security"],
                              set(security_names), set(),
                              "scan_result.representable_security")
-    require(representable["OPEN"] == ["WIFI_AUTH_OPEN"] and
-            representable["PERSONAL"] == [
-                "WIFI_AUTH_WPA_PSK", "WIFI_AUTH_WPA2_PSK",
-                "WIFI_AUTH_WPA_WPA2_PSK", "WIFI_AUTH_WPA3_PSK",
-                "WIFI_AUTH_WPA2_WPA3_PSK",
-            ], "VALUE", "Wi-Fi security mapping differs from the v1 profile")
+    require(representable["OPEN"] == ["OPEN"] and
+            representable["PERSONAL"] == ["PERSONAL"],
+            "VALUE", "Wi-Fi security mapping differs from the v1 profile")
     require(scan["unsupported_security_policy"] == "filter" and
             scan["empty_ssid_policy"] == "filter" and
             scan["invalid_ssid_policy"] == "filter" and
-            scan["duplicate_ssid_policy"] == "preserve" and
+            scan["duplicate_ssid_policy"] == "coalesce_ssid_security" and
+            scan["duplicate_keep"] == "strongest_rssi" and
             scan["count_semantics"] == "filtered_wire_records" and
             _boolean(scan["count_after_filter"],
                      "scan_result.count_after_filter"),
@@ -1626,7 +1641,7 @@ def validate_protocol(protocol: dict[str, Any]) -> None:
 
     data = _mapping(root["protocol"], {
         "name", "major", "minor", "byte_order", "gatt", "security",
-        "transport", "att_errors", "limits",
+        "transport", "firmware_version", "att_errors", "limits",
     }, set(), "protocol.protocol")
     _string(data["name"], "protocol.name")
     _integer(data["major"], "protocol.major", 0, 255)
@@ -1636,6 +1651,10 @@ def validate_protocol(protocol: dict[str, Any]) -> None:
     gatt = _validate_gatt(data["gatt"])
     _validate_security(data["security"])
     transport = _validate_transport(data["transport"])
+    firmware = _mapping(data["firmware_version"], {"kind"}, set(),
+                        "protocol.firmware_version")
+    require(firmware["kind"] == "product_compatibility", "VALUE",
+            "GET_INFO firmware is a product compatibility triple")
     _validate_att_errors(data["att_errors"])
     limits = _validate_limits(data["limits"])
     require(limits["min_ssid_bytes"] <= limits["max_ssid_bytes"] <= 255 and
@@ -2238,11 +2257,11 @@ def _validate_success_snapshot(protocol: dict[str, Any], operation: str,
 
 def _scan_input_record(value: Any, protocol: dict[str, Any], label: str
                        ) -> tuple[str | None, str, int]:
-    item = _mapping(value, {"authmode", "rssi_dbm"},
+    item = _mapping(value, {"security", "rssi_dbm"},
                     {"ssid", "ssid_hex"}, label)
     require(("ssid" in item) != ("ssid_hex" in item), "MISSING_FIELD",
             f"{label} must provide exactly one SSID representation")
-    authmode = _string(item["authmode"], f"{label}.authmode")
+    security = _string(item["security"], f"{label}.security")
     rssi = _integer(item["rssi_dbm"], f"{label}.rssi_dbm", -127, 127)
     if "ssid_hex" in item:
         raw = _hex(item["ssid_hex"], f"{label}.ssid_hex")
@@ -2262,15 +2281,30 @@ def _scan_input_record(value: Any, protocol: dict[str, Any], label: str
         if not (1 <= len(raw) <= 32) or any(
                 unicodedata.category(char) == "Cc" for char in ssid):
             ssid = None
-    return ssid, authmode, rssi
+    return ssid, security, rssi
 
 
-def _wire_security_for_authmode(scan_policy: dict[str, Any],
-                                authmode: str) -> str | None:
-    for security, authmodes in scan_policy["representable_security"].items():
-        if authmode in authmodes:
-            return security
+def _wire_security_for_source(scan_policy: dict[str, Any],
+                              security: str) -> str | None:
+    for name, aliases in scan_policy["representable_security"].items():
+        if security in aliases:
+            return name
     return None
+
+
+def _coalesce_scan_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    coalesced: list[dict[str, Any]] = []
+    index_by_key: dict[tuple[str, str], int] = {}
+    for record in records:
+        key = (record["ssid"], record["security"])
+        existing = index_by_key.get(key)
+        if existing is None:
+            index_by_key[key] = len(coalesced)
+            coalesced.append(record)
+            continue
+        if record["rssi_dbm"] > coalesced[existing]["rssi_dbm"]:
+            coalesced[existing] = record
+    return coalesced
 
 
 def _validate_operation_case(protocol: dict[str, Any], case: Any) -> set[str]:
@@ -2915,10 +2949,6 @@ def validate_vectors(protocol: dict[str, Any],
            result_rules["edge_cases"].items()},
     }
     scan_policy = protocol["wire_rules"]["scan_result"]
-    scan_security = scan_policy["representable_security"]
-    representable_authmodes = {
-        authmode for values in scan_security.values() for authmode in values
-    }
     scan_filter_cases: set[str] = set()
     wifi_cases: set[str] = set()
     for index, raw_case in enumerate(_list(root["wifi_cases"],
@@ -2951,10 +2981,10 @@ def validate_vectors(protocol: dict[str, Any],
         )
         expected_filtered: list[dict[str, Any]] = []
         for index, raw_record in enumerate(input_records):
-            ssid, authmode, rssi = _scan_input_record(
+            ssid, security_name, rssi = _scan_input_record(
                 raw_record, protocol, f"{case_id}.input[{index}]"
             )
-            security = (_wire_security_for_authmode(scan_policy, authmode)
+            security = (_wire_security_for_source(scan_policy, security_name)
                         if ssid is not None else None)
             if security is not None:
                 expected_filtered.append({
@@ -2962,6 +2992,7 @@ def validate_vectors(protocol: dict[str, Any],
                     "security": security,
                     "rssi_dbm": rssi,
                 })
+        expected_filtered = _coalesce_scan_records(expected_filtered)
         expected_count = min(len(expected_filtered),
                              scan_policy["maximum_records"])
         actual_count = _integer(expected["count"], f"{case_id}.count", 0,

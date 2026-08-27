@@ -105,10 +105,16 @@ protocol:
       full_profile_required_att_mtu: 498
       other_commands_status: MTU_TOO_SMALL
 
+  firmware_version:
+    kind: product_compatibility
+
   att_errors:
     insufficient_authentication: 0x05
     insufficient_encryption: 0x0f
     security_gate_error: insufficient_authentication
+    client_security_gate_errors:
+      - insufficient_authentication
+      - insufficient_encryption
     invalid_attribute_value_length: 0x0d
     value_not_allowed: 0x13
     profile_cccd_not_enabled: 0xfd
@@ -459,17 +465,13 @@ wire_rules:
     failure_has_empty_results: true
     maximum_records: 5
     representable_security:
-      OPEN: [WIFI_AUTH_OPEN]
-      PERSONAL:
-        - WIFI_AUTH_WPA_PSK
-        - WIFI_AUTH_WPA2_PSK
-        - WIFI_AUTH_WPA_WPA2_PSK
-        - WIFI_AUTH_WPA3_PSK
-        - WIFI_AUTH_WPA2_WPA3_PSK
+      OPEN: [OPEN]
+      PERSONAL: [PERSONAL]
     unsupported_security_policy: filter
     empty_ssid_policy: filter
     invalid_ssid_policy: filter
-    duplicate_ssid_policy: preserve
+    duplicate_ssid_policy: coalesce_ssid_security
+    duplicate_keep: strongest_rssi
     count_semantics: filtered_wire_records
     count_after_filter: true
 

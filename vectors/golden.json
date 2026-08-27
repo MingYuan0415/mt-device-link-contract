@@ -921,67 +921,67 @@
         "input": [
           {
             "ssid": "",
-            "authmode": "WIFI_AUTH_OPEN",
+            "security": "OPEN",
             "rssi_dbm": -30
           },
           {
             "ssid": "enterprise",
-            "authmode": "WIFI_AUTH_ENTERPRISE",
+            "security": "ENTERPRISE",
             "rssi_dbm": -31
           },
           {
             "ssid": "legacy",
-            "authmode": "WIFI_AUTH_WEP",
+            "security": "WEP",
             "rssi_dbm": -75
           },
           {
             "ssid": "wapi",
-            "authmode": "WIFI_AUTH_WAPI_PSK",
+            "security": "WAPI_PSK",
             "rssi_dbm": -76
           },
           {
             "ssid": "owe",
-            "authmode": "WIFI_AUTH_OWE",
+            "security": "OWE",
             "rssi_dbm": -77
           },
           {
             "ssid": "dpp",
-            "authmode": "WIFI_AUTH_DPP",
+            "security": "DPP",
             "rssi_dbm": -78
           },
           {
             "ssid": "future",
-            "authmode": "WIFI_AUTH_UNKNOWN_FUTURE",
+            "security": "UNKNOWN_FUTURE",
             "rssi_dbm": -79
           },
           {
             "ssid": "home",
-            "authmode": "WIFI_AUTH_WPA2_PSK",
+            "security": "PERSONAL",
             "rssi_dbm": -32
           },
           {
             "ssid": "secure",
-            "authmode": "WIFI_AUTH_WPA3_PSK",
+            "security": "PERSONAL",
             "rssi_dbm": -33
           },
           {
             "ssid": "guest",
-            "authmode": "WIFI_AUTH_WPA_PSK",
+            "security": "PERSONAL",
             "rssi_dbm": -34
           },
           {
             "ssid": "lab",
-            "authmode": "WIFI_AUTH_WPA_WPA2_PSK",
+            "security": "PERSONAL",
             "rssi_dbm": -35
           },
           {
             "ssid": "mesh",
-            "authmode": "WIFI_AUTH_WPA2_WPA3_PSK",
+            "security": "PERSONAL",
             "rssi_dbm": -36
           },
           {
             "ssid": "office",
-            "authmode": "WIFI_AUTH_WPA2_PSK",
+            "security": "PERSONAL",
             "rssi_dbm": -37
           }
         ],
@@ -1022,52 +1022,14 @@
         "input": [
           {
             "ssid": "",
-            "authmode": "WIFI_AUTH_OPEN",
+            "security": "OPEN",
             "rssi_dbm": -30
           },
           {
             "ssid": "enterprise",
-            "authmode": "WIFI_AUTH_ENTERPRISE",
+            "security": "ENTERPRISE",
             "rssi_dbm": -31
           },
-          {
-            "ssid": "home",
-            "authmode": "WIFI_AUTH_WPA2_PSK",
-            "rssi_dbm": -32
-          },
-          {
-            "ssid": "secure",
-            "authmode": "WIFI_AUTH_WPA3_PSK",
-            "rssi_dbm": -33
-          },
-          {
-            "ssid": "open",
-            "authmode": "WIFI_AUTH_OPEN",
-            "rssi_dbm": -34
-          },
-          {
-            "ssid": "home",
-            "authmode": "WIFI_AUTH_WPA2_PSK",
-            "rssi_dbm": -32
-          },
-          {
-            "ssid": "bad\u0001",
-            "authmode": "WIFI_AUTH_OPEN",
-            "rssi_dbm": -71
-          },
-          {
-            "ssid": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-            "authmode": "WIFI_AUTH_OPEN",
-            "rssi_dbm": -72
-          },
-          {
-            "ssid_hex": "ff",
-            "authmode": "WIFI_AUTH_OPEN",
-            "rssi_dbm": -73
-          }
-        ],
-        "count": 4,
-        "filtered_records": [
           {
             "ssid": "home",
             "security": "PERSONAL",
@@ -1087,6 +1049,39 @@
             "ssid": "home",
             "security": "PERSONAL",
             "rssi_dbm": -32
+          },
+          {
+            "ssid": "bad\u0001",
+            "security": "OPEN",
+            "rssi_dbm": -71
+          },
+          {
+            "ssid": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "security": "OPEN",
+            "rssi_dbm": -72
+          },
+          {
+            "ssid_hex": "ff",
+            "security": "OPEN",
+            "rssi_dbm": -73
+          }
+        ],
+        "count": 3,
+        "filtered_records": [
+          {
+            "ssid": "home",
+            "security": "PERSONAL",
+            "rssi_dbm": -32
+          },
+          {
+            "ssid": "secure",
+            "security": "PERSONAL",
+            "rssi_dbm": -33
+          },
+          {
+            "ssid": "open",
+            "security": "OPEN",
+            "rssi_dbm": -34
           }
         ]
       }

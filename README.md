@@ -26,13 +26,13 @@ enables `server_tx` indications by writing `02 00` to its encrypted and
 authenticated CCCD before sending a command.
 
 GATT rejections use the NimBLE SC-only security gate before application access
-callbacks. A link that is not both encrypted and authenticated uses
-insufficient authentication `0x05`; `0x0f` remains the standard insufficient
-encryption value for adapters or hosts that report that distinction. Invalid
+callbacks. A server MUST reject a link that is not both encrypted and
+authenticated with insufficient authentication `0x05`. `0x0f` remains the
+standard insufficient encryption value; clients SHOULD treat both `0x05` and
+`0x0f` as a request to complete secure pairing or re-encryption. Invalid
 attribute value length is `0x0d`, invalid header value is `0x13`, indications
 not enabled is the profile value `0xfd`, and an unconfirmed prior `server_tx`
-indication is the profile value `0xfe`. Clients should treat `0x05` and `0x0f`
-as a request to complete secure pairing or re-encryption.
+indication is the profile value `0xfe`.
 
 ## Security
 
@@ -97,7 +97,7 @@ ATT `0x13` instead. Ordinary non-success command responses have no payload.
 
 | Opcode | Command | Successful result |
 | ---: | --- | --- |
-| 1 | `GET_INFO` | Link, firmware, pairing-window, and required-MTU fields |
+| 1 | `GET_INFO` | Link, product-compatibility firmware triple, pairing-window, and required-MTU fields |
 | 2 | `GET_STATUS` | Current Wi-Fi snapshot |
 | 3 | `SCAN` | `operation_id` |
 | 4 | `SET_CREDENTIALS` | `operation_id` |
@@ -125,22 +125,20 @@ SSID and profile fields are strict UTF-8 without Unicode control characters.
 OPEN credentials require an empty password. PERSONAL passwords contain 8..63
 printable ASCII bytes. Scan results carry at most five records; empty SSIDs and
 hidden SSIDs, invalid UTF-8, control characters, and SSIDs longer than 32 bytes
-are filtered before encoding. Each source record is counted independently, so
-duplicate SSIDs remain distinct wire records. `count` is the number of retained
-wire records after filtering and the five-record limit; selection and ordering
-are not part of this contract. Authmodes outside the following set are filtered:
+are filtered before encoding. Source records that are not `OPEN` or `PERSONAL`
+are filtered. Remaining records are coalesced by `(SSID, security)`, keeping the
+strongest RSSI (`>` replaces; equal RSSI keeps the earlier record). The wire has
+no BSSID, so those keys are the only client-visible identity. `count` is the
+number of retained wire records after filtering, coalescing, and the five-record
+limit; ordering among distinct keys is not part of this contract. RSSI is an
+`i8` in the inclusive range -127..127.
 
-- OPEN: `WIFI_AUTH_OPEN`
-- PERSONAL: `WIFI_AUTH_WPA_PSK`, `WIFI_AUTH_WPA2_PSK`,
-  `WIFI_AUTH_WPA_WPA2_PSK`, `WIFI_AUTH_WPA3_PSK`, and
-  `WIFI_AUTH_WPA2_WPA3_PSK`
+`GET_INFO` `firmware_major/minor/patch` is a product compatibility triple, not a
+git identity or build fingerprint.
 
-WEP, WAPI-PSK, OWE, Enterprise, DPP, and unknown authmodes are filtered before
-encoding. `OPEN` and `PERSONAL` are the only wire security enum values. RSSI is
-an `i8` in the inclusive range -127..127.
-`SET_CREDENTIALS` validates only the wire profile. If the actual AP authmode
-does not match the selected profile, `CONNECT` is accepted and completes with
-`AUTHENTICATION`.
+`SET_CREDENTIALS` validates only the wire profile. If the actual AP security
+class does not match the selected profile, `CONNECT` is accepted and completes
+with `AUTHENTICATION`.
 
 `profile_ssid` identifies the saved profile, so it can temporarily differ from
 the SSID of an existing link after `SET_CREDENTIALS` succeeds while connected.
