@@ -1,3 +1,5 @@
+**English** | [简体中文](README_ZH.md)
+
 # MicroTech Device Link Contract
 
 This repository is the canonical source for the `device-link/v1` BLE contract.
